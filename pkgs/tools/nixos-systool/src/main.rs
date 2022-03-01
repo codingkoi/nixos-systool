@@ -43,6 +43,7 @@ fn main() {
     let command = Commands::from_args();
     if let Err(e) = run_command(command) {
         eprintln!("{}", "Error running command".yellow().italic());
+        eprintln!("  - {e}");
         exit(1);
     };
 }
@@ -55,7 +56,7 @@ fn run_command(command: Commands) -> Result<()> {
                 Some(method) => method,
             };
             println!("{}", "Applying system configuration".italic());
-            cmd!("sudo", "nixos-rebuild", method, "--builders", "\"\"").run()?;
+            cmd!("sudo", "nixos-rebuild", method, "--builders", "").run()?;
         }
         Commands::ApplyUser { flake_path } => {
             let pwd = current_dir()?;
@@ -68,11 +69,11 @@ fn run_command(command: Commands) -> Result<()> {
                 "build",
                 format!(".#homeConfigurations.{user}.activationPackage"),
                 "--builders",
-                "\"\""
+                ""
             )
             .run()?;
             cmd!("./result/activate").run()?;
-            cmd!("rm ./result").run()?;
+            cmd!("rm", "./result").run()?;
             set_current_dir(pwd)?;
         }
         Commands::Clean => {

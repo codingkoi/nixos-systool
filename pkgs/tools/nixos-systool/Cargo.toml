@@ -1,6 +1,6 @@
 [package]
 name = "nixos-systool"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,6 +11,8 @@ lto = true
 overflow-checks = false
 panic = "abort"
 codegen-units = 1
+# Add this once 1.59 lands in `nixpkgs`
+#strip = "symbols"
 
 [dependencies]
 duct = "0.13.5"
