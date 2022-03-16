@@ -1,7 +1,9 @@
 use color_eyre::Result;
 use duct::cmd;
+use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::env::{current_dir, set_current_dir};
+use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::process::exit;
 use structopt::StructOpt;
@@ -39,21 +41,61 @@ enum Commands {
     },
 }
 
+impl Display for Commands {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let display = match self {
+            Commands::Apply { .. } => "apply",
+            Commands::ApplyUser { .. } => "apply-user",
+            Commands::Clean => "clean",
+            Commands::Prune => "prune",
+            Commands::Search { .. } => "search",
+            Commands::Update { .. } => "update",
+        };
+        f.write_str(display)
+    }
+}
+
+impl Commands {
+    /// Returns true if the command should send a DBus-style notification
+    /// on successful completion.
+    fn should_notify(&self) -> bool {
+        !matches!(self, Commands::Search { .. } | Commands::Update { .. })
+    }
+}
+
 fn main() {
     let command = Commands::from_args();
-    if let Err(e) = run_command(command) {
+    if let Err(e) = run_command(&command) {
         eprintln!("{}", "Error running command".yellow().italic());
         eprintln!("  - {e}");
+        Notification::new()
+            .summary("NixOS System Tool")
+            .body(format!("`{command}` command execution failed. See output for details").as_str())
+            .appname("nixos-systool")
+            .hint(Hint::Urgency(Urgency::Critical))
+            .timeout(Timeout::Never)
+            .show()
+            .expect("Failed to show notification");
         exit(1);
+    };
+    // Send a notification on success for commands that we want to notify on
+    if command.should_notify() {
+        Notification::new()
+            .summary("NixOS System Tool")
+            .body(format!("`{command}` command executed successfully").as_str())
+            .appname("nixos-systool")
+            .timeout(Timeout::Never)
+            .show()
+            .expect("Failed to show notification");
     };
 }
 
-fn run_command(command: Commands) -> Result<()> {
+fn run_command(command: &Commands) -> Result<()> {
     match command {
         Commands::Apply { method } => {
             let method = match method {
                 None => "switch".to_string(),
-                Some(method) => method,
+                Some(method) => method.to_string(),
             };
             println!("{}", "Applying system configuration".italic());
             cmd!("sudo", "nixos-rebuild", method, "--builders", "").run()?;

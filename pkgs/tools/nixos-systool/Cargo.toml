@@ -1,6 +1,6 @@
 [package]
 name = "nixos-systool"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,8 +15,9 @@ codegen-units = 1
 #strip = "symbols"
 
 [dependencies]
-duct = "0.13.5"
-color-eyre = "0.6.0"
-owo-colors = "3.2.0"
-structopt = "0.3.26"
-thiserror = "1.0.30"
+color-eyre = "0.6"
+duct = "0.13"
+notify-rust = "4"
+owo-colors = "3.2"
+structopt = "0.3"
+thiserror = "1.0"

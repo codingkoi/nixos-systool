@@ -29,7 +29,7 @@
         # I'm using `rustup` here because Clion/Rust can't find the Rust stdlib
         # sources without it. I'm not sure what's going on there.
         devShell = with pkgs; mkShell {
-          buildInputs = [ rustup rustfmt pre-commit rustPackages.clippy ];
+          nativeBuildInputs = [ rustup rustfmt pre-commit rustPackages.clippy ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
       });
