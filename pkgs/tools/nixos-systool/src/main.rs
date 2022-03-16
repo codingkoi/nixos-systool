@@ -70,7 +70,7 @@ fn main() {
         eprintln!("  - {e}");
         Notification::new()
             .summary("NixOS System Tool")
-            .body(format!("`{command}` command execution failed. See output for details").as_str())
+            .body(format!("`{command}` command execution failed.\nSee output for details").as_str())
             .appname("nixos-systool")
             .hint(Hint::Urgency(Urgency::Critical))
             .timeout(Timeout::Never)
