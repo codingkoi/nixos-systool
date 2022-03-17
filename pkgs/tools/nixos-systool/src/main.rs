@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use std::process::exit;
 use structopt::StructOpt;
 
+/// How long the success notification should be displayed before disappearing
+const NOTIFICATION_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
+
 #[derive(Debug, StructOpt)]
 /// NixOS system management tool
 enum Commands {
@@ -84,7 +87,7 @@ fn main() {
             .summary("NixOS System Tool")
             .body(format!("`{command}` command executed successfully").as_str())
             .appname("nixos-systool")
-            .timeout(Timeout::Never)
+            .timeout(NOTIFICATION_TIMEOUT)
             .show()
             .expect("Failed to show notification");
     };
