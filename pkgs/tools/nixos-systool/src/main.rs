@@ -101,7 +101,7 @@ fn run_command(command: &Commands) -> Result<()> {
                 Some(method) => method.to_string(),
             };
             println!("{}", "Applying system configuration".italic());
-            cmd!("sudo", "nixos-rebuild", method, "--builders", "").run()?;
+            cmd!("sudo", "nixos-rebuild", method).run()?;
         }
         Commands::ApplyUser { flake_path } => {
             let pwd = current_dir()?;
@@ -113,8 +113,6 @@ fn run_command(command: &Commands) -> Result<()> {
                 "nix",
                 "build",
                 format!(".#homeConfigurations.{user}.activationPackage"),
-                "--builders",
-                ""
             )
             .run()?;
             cmd!("./result/activate").run()?;
