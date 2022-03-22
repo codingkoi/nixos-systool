@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use duct::cmd;
+use nix::unistd::Uid;
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::env::{current_dir, set_current_dir};
@@ -18,7 +19,7 @@ enum Commands {
     Apply {
         /// Method used to apply the system configuration
         ///
-        /// Must be one of "switch" (default), "boot", or "remote".
+        /// Must be a valid build type accepted by `nixos-rebuild`.
         method: Option<String>,
     },
     /// Apply user configuration using home-manager
@@ -67,6 +68,18 @@ impl Commands {
 }
 
 fn main() {
+    // For security reasons, I don't want this tool run as root, so check and exit
+    // that's the case.
+    if Uid::effective().is_root() {
+        eprintln!(
+            "{}",
+            "For security reasons, nixos-systool must not be run as root"
+                .red()
+                .italic()
+        );
+        exit(1);
+    }
+
     let command = Commands::from_args();
     if let Err(e) = run_command(&command) {
         eprintln!("{}", "Error running command".yellow().italic());
