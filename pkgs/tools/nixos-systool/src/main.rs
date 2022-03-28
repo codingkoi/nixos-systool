@@ -155,8 +155,9 @@ fn run_command(command: &Commands) -> Result<()> {
 
             println!("{}", "Updating system configuration flake".italic());
             cmd!("nix", "flake", "update").run()?;
-            // TODO - add commands to auto-commit lock update
-
+            // commit changes
+            cmd!("git", "add", "flake.lock").run()?;
+            cmd!("git", "commit", "-m", "Update flake lock").run()?;
             set_current_dir(pwd)?;
         }
     }
