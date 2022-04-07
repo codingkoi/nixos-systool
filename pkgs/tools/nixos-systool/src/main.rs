@@ -1,6 +1,7 @@
 use color_eyre::Result;
 use duct::cmd;
 use nix::unistd::Uid;
+use nixos_systool::{FlakeLock, FlakeStatus};
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::env::{current_dir, set_current_dir};
@@ -43,6 +44,12 @@ enum Commands {
         #[structopt(env = "SYS_FLAKE_PATH")]
         flake_path: PathBuf,
     },
+    /// Check if the flake lock is outdated
+    Check {
+        /// Path to the system configuration flake
+        #[structopt(env = "SYS_FLAKE_PATH")]
+        flake_path: PathBuf,
+    },
 }
 
 impl Display for Commands {
@@ -54,6 +61,7 @@ impl Display for Commands {
             Commands::Prune => "prune",
             Commands::Search { .. } => "search",
             Commands::Update { .. } => "update",
+            Commands::Check { .. } => "check",
         };
         f.write_str(display)
     }
@@ -63,7 +71,10 @@ impl Commands {
     /// Returns true if the command should send a DBus-style notification
     /// on successful completion.
     fn should_notify(&self) -> bool {
-        !matches!(self, Commands::Search { .. } | Commands::Update { .. })
+        !matches!(
+            self,
+            Commands::Search { .. } | Commands::Update { .. } | Commands::Check { .. }
+        )
     }
 }
 
@@ -159,6 +170,27 @@ fn run_command(command: &Commands) -> Result<()> {
             cmd!("git", "add", "flake.lock").run()?;
             cmd!("git", "commit", "-m", "Update flake lock").run()?;
             set_current_dir(pwd)?;
+        }
+        Commands::Check { flake_path } => {
+            let mut flake_lock_filename = flake_path.clone();
+            flake_lock_filename.push("flake");
+            flake_lock_filename.set_extension("lock");
+            let check_result = FlakeLock::load(flake_lock_filename)?.check()?;
+            match check_result {
+                FlakeStatus::UpToDate => {
+                    println!("{}", "System flake lock is up to date.".italic());
+                }
+                FlakeStatus::Outdated { since } => {
+                    println!(
+                        "{}",
+                        format!("System flake lock has been out of date since {since}").red()
+                    );
+                    println!(
+                        "{}",
+                        "Please update as soon as possible using `nixos-systool update`.".red()
+                    );
+                }
+            }
         }
     }
     Ok(())

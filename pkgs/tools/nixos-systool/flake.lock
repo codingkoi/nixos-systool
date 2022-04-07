@@ -3,7 +3,7 @@
     "flake-compat": {
       "flake": false,
       "locked": {
-        "lastModified": 1641205782,
+        "last_modified": 1641205782,
         "narHash": "sha256-4jY7RCWUoZ9cKD8co0/4tFARpWB+57+r1bLLvXNJliY=",
         "owner": "edolstra",
         "repo": "flake-compat",
@@ -21,7 +21,7 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1639947939,
+        "last_modified": 1639947939,
         "narHash": "sha256-pGsM8haJadVP80GFq4xhnSpNitYNQpaXk4cnA796Cso=",
         "owner": "nmattia",
         "repo": "naersk",
@@ -48,7 +48,7 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1645347465,
+        "last_modified": 1645347465,
         "narHash": "sha256-GoNcKieZf86tFzuVY7+kfEGw0rjgBrdfwRj4l7zOfZw=",
         "owner": "NixOS",
         "repo": "nixpkgs",
@@ -72,7 +72,7 @@
     },
     "utils": {
       "locked": {
-        "lastModified": 1644229661,
+        "last_modified": 1644229661,
         "narHash": "sha256-1YdnJAsNy69bpcjuoKdOYQX0YxZBiCYZo4Twxerqv7k=",
         "owner": "numtide",
         "repo": "flake-utils",
