@@ -31,6 +31,9 @@
         devShell = with pkgs; mkShell {
           nativeBuildInputs = [ rustup rustfmt pre-commit rustPackages.clippy ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
+          shellHook = ''
+            ${rustup}/bin/rustup update
+          '';
         };
       });
 }

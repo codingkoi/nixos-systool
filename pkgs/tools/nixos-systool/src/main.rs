@@ -1,3 +1,4 @@
+use clap::{Parser, Subcommand};
 use color_eyre::Result;
 use duct::cmd;
 use nix::unistd::Uid;
@@ -8,13 +9,19 @@ use std::env::{current_dir, set_current_dir};
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::process::exit;
-use structopt::StructOpt;
 
 /// How long the success notification should be displayed before disappearing
 const NOTIFICATION_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
+
 /// NixOS system management tool
+#[derive(Debug, Subcommand)]
 enum Commands {
     /// Apply the system configuration using nixos-apply
     Apply {
@@ -26,7 +33,7 @@ enum Commands {
     /// Apply user configuration using home-manager
     ApplyUser {
         /// Path to the system configuration flake
-        #[structopt(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH")]
         flake_path: PathBuf,
     },
     /// Run garbage collection on the Nix store
@@ -41,13 +48,13 @@ enum Commands {
     /// Update the system flake lock
     Update {
         /// Path to the system configuration flake
-        #[structopt(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH")]
         flake_path: PathBuf,
     },
     /// Check if the flake lock is outdated
     Check {
         /// Path to the system configuration flake
-        #[structopt(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH")]
         flake_path: PathBuf,
     },
 }
@@ -91,7 +98,7 @@ fn main() {
         exit(1);
     }
 
-    let command = Commands::from_args();
+    let command = Cli::parse().command;
     if let Err(e) = run_command(&command) {
         eprintln!("{}", "Error running command".yellow().italic());
         eprintln!("  - {e}");

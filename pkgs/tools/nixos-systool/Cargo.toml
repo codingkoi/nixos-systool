@@ -1,6 +1,7 @@
 [package]
 name = "nixos-systool"
-version = "0.2.0"
+authors = ["Jeremy Shoemaker <jeremy@codingkoi.com>"]
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,11 +12,11 @@ lto = true
 overflow-checks = false
 panic = "abort"
 codegen-units = 1
-# Add this once 1.59 lands in `nixpkgs`
-#strip = "symbols"
+strip = "symbols"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "3.1", features = ["derive", "env"] }
 color-eyre = "0.6"
 duct = "0.13"
 nix = "0.23"
@@ -23,5 +24,4 @@ notify-rust = "4"
 owo-colors = "3.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-structopt = "0.3"
 thiserror = "1.0"
