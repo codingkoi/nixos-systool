@@ -44,6 +44,12 @@ enum Commands {
     Search {
         /// Pattern to search for in nixpkgs
         query: String,
+        /// Search on the NixOS website in a browser
+        #[clap(short, long)]
+        browser: bool,
+        /// Search for options instead of packages
+        #[clap(short, long)]
+        options: bool,
     },
     /// Update the system flake lock
     Update {
@@ -163,9 +169,34 @@ fn run_command(command: &Commands) -> Result<()> {
             println!("{}", "Pruning old generations".italic());
             cmd!("sudo", "nix-collect-garbage", "-d").run()?;
         }
-        Commands::Search { query } => {
-            println!("{}", format!("Searching nixpkgs for '{query}'").italic());
-            cmd!("nix", "search", "nixpkgs", query).run()?;
+        Commands::Search {
+            query,
+            browser,
+            options,
+        } => {
+            if *options {
+                println!("{}", format!("Searching options for '{query}'").italic());
+                if *browser {
+                    cmd!(
+                        "xdg-open",
+                        format!("https://search.nixos.org/options?channel=unstable&query={query}")
+                    )
+                    .run()?;
+                } else {
+                    cmd!("manix", query).run()?;
+                }
+            } else {
+                println!("{}", format!("Searching nixpkgs for '{query}'").italic());
+                if *browser {
+                    cmd!(
+                        "xdg-open",
+                        format!("https://search.nixos.org/packages?channel=unstable&query={query}")
+                    )
+                    .run()?;
+                } else {
+                    cmd!("nix", "search", "nixpkgs", query).run()?;
+                }
+            }
         }
         Commands::Update { flake_path } => {
             let pwd = current_dir()?;
