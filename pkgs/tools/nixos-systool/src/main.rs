@@ -138,7 +138,9 @@ fn run_command(command: &Commands) -> Result<()> {
                 Some(method) => method.to_string(),
             };
             println!("{}", "Applying system configuration".italic());
-            cmd!("sudo", "nixos-rebuild", method).run()?;
+            // Use ``--use-remote-sudo` flag because Git won't recognize the
+            // system flake repository when run using `sudo` due to a CVE fix.
+            cmd!("nixos-rebuild", "--use-remote-sudo", method).run()?;
         }
         Commands::ApplyUser { flake_path } => {
             let pwd = current_dir()?;
