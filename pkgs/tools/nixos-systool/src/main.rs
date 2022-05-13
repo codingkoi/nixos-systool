@@ -217,13 +217,14 @@ fn run_command(command: &Commands) -> Result<()> {
             flake_lock_filename.set_extension("lock");
             let check_result = FlakeLock::load(flake_lock_filename)?.check()?;
             match check_result {
-                FlakeStatus::UpToDate => {
+                FlakeStatus::UpToDate { last_update } => {
                     println!("{}", "System flake lock is up to date.".italic());
+                    println!("  {}", format!("Last updated on {last_update}").italic());
                 }
-                FlakeStatus::Outdated { since } => {
+                FlakeStatus::Outdated { last_update } => {
                     println!(
                         "{}",
-                        format!("System flake lock has been out of date since {since}").red()
+                        format!("System flake lock has been out of date since {last_update}").red()
                     );
                     println!(
                         "{}",

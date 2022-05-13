@@ -39,11 +39,11 @@
         # I'm using `rustup` here because Clion/Rust can't find the Rust stdlib
         # sources without it. I'm not sure what's going on there.
         devShells.default = with pkgs; mkShell {
-          nativeBuildInputs = [ cargoArtifacts rustc rust-analyzer cargo rustfmt clippy ];
+          nativeBuildInputs = [ rustup rust-analyzer rustfmt clippy ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
-          # shellHook = ''
-          #   ${rustup}/bin/rustup update
-          # '';
+          shellHook = ''
+            ${rustup}/bin/rustup update
+          '';
         };
       });
 }

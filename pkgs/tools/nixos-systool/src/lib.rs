@@ -29,8 +29,8 @@ struct InputLock {
 }
 
 pub enum FlakeStatus {
-    UpToDate,
-    Outdated { since: Date<Utc> },
+    UpToDate { last_update: Date<Utc> },
+    Outdated { last_update: Date<Utc> },
 }
 
 impl FlakeLock {
@@ -56,10 +56,12 @@ impl FlakeLock {
             let last_update = DateTime::from_utc(last_update_ts, Utc);
             if now - last_update >= Duration::weeks(2) {
                 Ok(FlakeStatus::Outdated {
-                    since: last_update.date(),
+                    last_update: last_update.date(),
                 })
             } else {
-                Ok(FlakeStatus::UpToDate)
+                Ok(FlakeStatus::UpToDate {
+                    last_update: last_update.date(),
+                })
             }
         } else {
             Err(eyre!("Cannot find 'nixpkgs' in flake lock!"))
