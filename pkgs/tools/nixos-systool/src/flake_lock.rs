@@ -1,11 +1,10 @@
 use chrono::prelude::*;
 use chrono::Duration;
-use color_eyre::eyre::eyre;
-use color_eyre::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use thiserror::Error;
 
 #[derive(Deserialize)]
 pub struct FlakeLock {
@@ -33,14 +32,28 @@ pub enum FlakeStatus {
     Outdated { last_update: Date<Utc> },
 }
 
+#[derive(Error, Debug)]
+pub enum FlakeLoadError {
+    #[error("Couldn't read lock file: {0}")]
+    LockFileError(#[from] std::io::Error),
+    #[error("Failed to parse lock file JSON: {0}")]
+    JsonParseError(#[from] serde_json::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum FlakeCheckError {
+    #[error("Cannot find 'nixpkgs' in flake lock!")]
+    NixpkgsNotFound,
+}
+
 impl FlakeLock {
     /// Load the flake.lock file into a representation we can use
-    pub fn load<T: AsRef<Path>>(filename: T) -> Result<Self> {
+    pub fn load<T: AsRef<Path>>(filename: T) -> Result<Self, FlakeLoadError> {
         let content = fs::read_to_string(filename)?;
         Ok(serde_json::from_str::<Self>(&content)?)
     }
 
-    pub fn check(&self) -> Result<FlakeStatus> {
+    pub fn check(&self) -> Result<FlakeStatus, FlakeCheckError> {
         if let Some(nixpkgs) = self.nodes.get("nixpkgs") {
             let now = Utc::now();
             // Have to jump through hoops because DateTime doesn't
@@ -64,7 +77,7 @@ impl FlakeLock {
                 })
             }
         } else {
-            Err(eyre!("Cannot find 'nixpkgs' in flake lock!"))
+            Err(FlakeCheckError::NixpkgsNotFound)
         }
     }
 }

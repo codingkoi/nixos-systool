@@ -1,17 +1,22 @@
+mod flake_lock;
+mod messages;
+
+use crate::flake_lock::{FlakeLock, FlakeStatus};
 use clap::{Parser, Subcommand};
-use color_eyre::Result;
 use duct::cmd;
 use nix::unistd::Uid;
-use nixos_systool::{FlakeLock, FlakeStatus};
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::env::{current_dir, set_current_dir};
+use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::process::exit;
 
 /// How long the success notification should be displayed before disappearing
-const NOTIFICATION_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
+const SUCCESS_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
+/// How long the failure notification should be displayed before disappearing
+const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -28,39 +33,41 @@ enum Commands {
         /// Method used to apply the system configuration
         ///
         /// Must be a valid build type accepted by `nixos-rebuild`.
+        #[clap(value_parser)]
         method: Option<String>,
     },
     /// Apply user configuration using home-manager
     ApplyUser {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
     },
     /// Run garbage collection on the Nix store
     Clean,
     /// Prune old generations from the Nix store
     Prune,
-    /// Search nixpkgs
+    /// Search Nixpkgs or NixOS options
     Search {
-        /// Pattern to search for in nixpkgs
+        /// Pattern to search for in Nixpkgs
+        #[clap(value_parser)]
         query: String,
         /// Search on the NixOS website in a browser
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         browser: bool,
         /// Search for options instead of packages
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         options: bool,
     },
     /// Update the system flake lock
     Update {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
     },
     /// Check if the flake lock is outdated
     Check {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH")]
+        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
     },
 }
@@ -93,30 +100,30 @@ impl Commands {
 
 fn main() {
     // For security reasons, I don't want this tool run as root, so check and exit
-    // that's the case.
+    // if that's the case.
     if Uid::effective().is_root() {
-        eprintln!(
-            "{}",
-            "For security reasons, nixos-systool must not be run as root"
-                .red()
-                .italic()
-        );
+        error!("For security reasons, nixos-systool must not be run as root");
         exit(1);
     }
 
     let command = Cli::parse().command;
     if let Err(e) = run_command(&command) {
-        eprintln!("{}", "Error running command".yellow().italic());
-        eprintln!("  - {e}");
-        Notification::new()
-            .summary("NixOS System Tool")
-            .body(format!("`{command}` command execution failed.\nSee output for details").as_str())
-            .appname("nixos-systool")
-            .hint(Hint::Urgency(Urgency::Critical))
-            .timeout(Timeout::Never)
-            .show()
-            .expect("Failed to show notification");
-        exit(1);
+        error!("Error running command");
+        error!(format!("  - {e}"));
+        if command.should_notify() {
+            Notification::new()
+                .summary("NixOS System Tool")
+                .body(
+                    format!("`{command}` command execution failed.\nSee output for details")
+                        .as_str(),
+                )
+                .appname("nixos-systool")
+                .hint(Hint::Urgency(Urgency::Critical))
+                .timeout(FAILURE_TIMEOUT)
+                .show()
+                .expect("Failed to show notification");
+            exit(1);
+        }
     };
     // Send a notification on success for commands that we want to notify on
     if command.should_notify() {
@@ -124,21 +131,21 @@ fn main() {
             .summary("NixOS System Tool")
             .body(format!("`{command}` command executed successfully").as_str())
             .appname("nixos-systool")
-            .timeout(NOTIFICATION_TIMEOUT)
+            .timeout(SUCCESS_TIMEOUT)
             .show()
             .expect("Failed to show notification");
     };
 }
 
-fn run_command(command: &Commands) -> Result<()> {
+fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
     match command {
         Commands::Apply { method } => {
             let method = match method {
                 None => "switch".to_string(),
                 Some(method) => method.to_string(),
             };
-            println!("{}", "Applying system configuration".italic());
-            // Use ``--use-remote-sudo` flag because Git won't recognize the
+            info!("Applying system configuration");
+            // Use `--use-remote-sudo` flag because Git won't recognize the
             // system flake repository when run using `sudo` due to a CVE fix.
             cmd!("nixos-rebuild", "--use-remote-sudo", method).run()?;
         }
@@ -147,7 +154,7 @@ fn run_command(command: &Commands) -> Result<()> {
             set_current_dir(flake_path)?;
 
             let user = cmd!("whoami").read()?;
-            println!("{}", "Applying user settings".italic());
+            info!("Applying user settings");
             cmd!(
                 "nix",
                 "build",
@@ -159,16 +166,13 @@ fn run_command(command: &Commands) -> Result<()> {
             set_current_dir(pwd)?;
         }
         Commands::Clean => {
-            println!("{}", "Running garbage collection".italic());
+            info!("Running garbage collection");
             cmd!("nix", "store", "gc").run()?;
-            println!(
-                "{}",
-                "Deduplication running... this may take a while".italic()
-            );
+            info!("Deduplication running... this may take a while");
             cmd!("nix", "store", "optimise").run()?;
         }
         Commands::Prune => {
-            println!("{}", "Pruning old generations".italic());
+            info!("Pruning old generations");
             cmd!("sudo", "nix-collect-garbage", "-d").run()?;
         }
         Commands::Search {
@@ -177,7 +181,7 @@ fn run_command(command: &Commands) -> Result<()> {
             options,
         } => {
             if *options {
-                println!("{}", format!("Searching options for '{query}'").italic());
+                info!(format!("Searching options for '{query}'"));
                 if *browser {
                     cmd!(
                         "xdg-open",
@@ -188,7 +192,7 @@ fn run_command(command: &Commands) -> Result<()> {
                     cmd!("manix", query).run()?;
                 }
             } else {
-                println!("{}", format!("Searching nixpkgs for '{query}'").italic());
+                info!(format!("Searching nixpkgs for '{query}'"));
                 if *browser {
                     cmd!(
                         "xdg-open",
@@ -204,7 +208,7 @@ fn run_command(command: &Commands) -> Result<()> {
             let pwd = current_dir()?;
             set_current_dir(flake_path)?;
 
-            println!("{}", "Updating system configuration flake".italic());
+            info!("Updating system configuration flake");
             cmd!("nix", "flake", "update").run()?;
             // commit changes
             cmd!("git", "add", "flake.lock").run()?;
@@ -218,18 +222,14 @@ fn run_command(command: &Commands) -> Result<()> {
             let check_result = FlakeLock::load(flake_lock_filename)?.check()?;
             match check_result {
                 FlakeStatus::UpToDate { last_update } => {
-                    println!("{}", "System flake lock is up to date.".italic());
-                    println!("  {}", format!("Last updated on {last_update}").italic());
+                    info!("System flake lock is up to date.");
+                    info!(format!("  Last updated on {last_update}"));
                 }
                 FlakeStatus::Outdated { last_update } => {
-                    println!(
-                        "{}",
-                        format!("System flake lock has been out of date since {last_update}").red()
-                    );
-                    println!(
-                        "{}",
-                        "Please update as soon as possible using `nixos-systool update`.".red()
-                    );
+                    error!(format!(
+                        "System flake lock has been out of date since {last_update}"
+                    ));
+                    error!("Please update as soon as possible using `nixos-systool update`.");
                 }
             }
         }

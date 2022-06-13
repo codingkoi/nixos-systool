@@ -1,10 +1,8 @@
 [package]
 name = "nixos-systool"
 authors = ["Jeremy Shoemaker <jeremy@codingkoi.com>"]
-version = "0.3.2"
+version = "1.0.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.release]
 opt-level = "z"
@@ -17,7 +15,6 @@ strip = "symbols"
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "3.1", features = ["derive", "env"] }
-color-eyre = "0.6"
 duct = "0.13"
 nix = "0.23"
 notify-rust = "4"
