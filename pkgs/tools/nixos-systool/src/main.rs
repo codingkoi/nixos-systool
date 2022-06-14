@@ -41,6 +41,10 @@ enum Commands {
         /// Path to the system configuration flake
         #[clap(env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
+        /// User configuration to apply, defaults to the
+        /// current user.
+        #[clap(value_parser)]
+        target_user: Option<String>,
     },
     /// Run garbage collection on the Nix store
     Clean,
@@ -149,21 +153,26 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
             // system flake repository when run using `sudo` due to a CVE fix.
             cmd!("nixos-rebuild", "--use-remote-sudo", method).run()?;
         }
-        Commands::ApplyUser { flake_path } => {
-            let pwd = current_dir()?;
-            set_current_dir(flake_path)?;
-
-            let user = cmd!("whoami").read()?;
-            info!("Applying user settings");
+        Commands::ApplyUser {
+            flake_path,
+            target_user,
+        } => {
+            let flake_path = flake_path
+                .as_os_str()
+                .to_str()
+                .expect("Couldn't convert flake path to string!");
+            let user = match target_user {
+                Some(user) => user.to_owned(),
+                None => cmd!("whoami").read()?,
+            };
+            info!(format!("Applying user settings for {user}"));
             cmd!(
-                "nix",
-                "build",
-                format!(".#homeConfigurations.{user}.activationPackage"),
+                "home-manager",
+                "switch",
+                "--flake",
+                format!("{flake_path}#{user}"),
             )
             .run()?;
-            cmd!("./result/activate").run()?;
-            cmd!("rm", "./result").run()?;
-            set_current_dir(pwd)?;
         }
         Commands::Clean => {
             info!("Running garbage collection");
