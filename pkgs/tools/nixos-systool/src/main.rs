@@ -2,6 +2,7 @@ mod flake_lock;
 mod messages;
 
 use crate::flake_lock::{FlakeLock, FlakeStatus};
+
 use clap::{Parser, Subcommand};
 use duct::cmd;
 use nix::unistd::Uid;

@@ -7,6 +7,7 @@ use std::path::Path;
 use thiserror::Error;
 
 #[derive(Deserialize)]
+/// Flake lock file
 pub struct FlakeLock {
     nodes: HashMap<String, InputNode>,
 }
