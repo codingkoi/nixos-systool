@@ -12,7 +12,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, naersk, utils, flake-compat }:
+  outputs = { self, nixpkgs, naersk, utils, ... }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
