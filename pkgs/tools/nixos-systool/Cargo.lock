@@ -533,13 +533,14 @@ dependencies = [
 
 [[package]]
 name = "nixos-systool"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "chrono",
  "clap",
  "duct",
  "nix",
  "notify-rust",
+ "os_info",
  "owo-colors",
  "serde",
  "serde_json",
@@ -631,6 +632,16 @@ checksum = "44630c059eacfd6e08bdaa51b1db2ce33119caa4ddc1235e923109aa5f25ccb1"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "os_info"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0eca3ecae1481e12c3d9379ec541b238a16f0b75c9a409942daa8ec20dbfdb62"
+dependencies = [
+ "log",
+ "winapi",
 ]
 
 [[package]]

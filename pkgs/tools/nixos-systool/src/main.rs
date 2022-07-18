@@ -13,11 +13,18 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::process::exit;
+use thiserror::Error as ThisError;
 
 /// How long the success notification should be displayed before disappearing
 const SUCCESS_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
 /// How long the failure notification should be displayed before disappearing
 const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
+
+#[derive(Debug, ThisError)]
+enum SystoolError {
+    #[error("Cannot `apply` to non-NixOS systems: {0}")]
+    NonNixOsSystem(os_info::Type),
+}
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -145,6 +152,13 @@ fn main() {
 fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
     match command {
         Commands::Apply { method } => {
+            // If we're not running on NixOS, we want to return an error and not
+            // try to run this command.
+            let info = os_info::get();
+            if !matches!(info.os_type(), os_info::Type::NixOS) {
+                return Err(Box::new(SystoolError::NonNixOsSystem(info.os_type())));
+            }
+
             let method = match method {
                 None => "switch".to_string(),
                 Some(method) => method.to_string(),
