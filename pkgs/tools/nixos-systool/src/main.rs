@@ -44,7 +44,7 @@ enum Commands {
         flake_path: PathBuf,
         /// User configuration to apply, defaults to the
         /// current user.
-        #[clap(value_parser)]
+        #[clap(short = 'u', long = "user", value_parser)]
         target_user: Option<String>,
     },
     /// Run garbage collection on the Nix store
@@ -126,7 +126,7 @@ fn main() {
                 .hint(Hint::Urgency(Urgency::Critical))
                 .timeout(FAILURE_TIMEOUT)
                 .show()
-                .expect("Failed to show notification");
+                .ok();
             exit(1);
         }
     };
@@ -138,7 +138,7 @@ fn main() {
             .appname("nixos-systool")
             .timeout(SUCCESS_TIMEOUT)
             .show()
-            .expect("Failed to show notification");
+            .ok();
     };
 }
 
@@ -166,7 +166,7 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
                 Some(user) => user.to_owned(),
                 None => cmd!("whoami").read()?,
             };
-            info!(format!("Applying user settings for {user}"));
+            info!(format!("Applying user settings for '{user}'"));
             cmd!(
                 "home-manager",
                 "switch",
