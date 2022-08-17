@@ -24,8 +24,7 @@
           root = ./.;
         };
         # `nix run`
-        apps."${system}".default =
-          utils.lib.mkApp { drv = packages.default."${system}"; };
+        apps.default = utils.lib.mkApp { drv = packages.default; };
         # `nix develop`
         devShells.default = with pkgs;
           mkShell {
