@@ -47,7 +47,7 @@ enum Commands {
     /// Apply user configuration using home-manager
     ApplyUser {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
+        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
         /// User configuration to apply, defaults to the
         /// current user.
@@ -56,6 +56,18 @@ enum Commands {
     },
     /// Run garbage collection on the Nix store
     Clean,
+    /// Build the system configuration, without applying it
+    Build {
+        /// Path to the system configuration flake
+        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
+        flake_path: PathBuf,
+        /// Which system to build, defaults to the current host
+        #[clap(value_parser)]
+        system: Option<String>,
+        /// Whether to build a VM image instead
+        #[clap(long, value_parser)]
+        vm: bool,
+    },
     /// Prune old generations from the Nix store
     Prune,
     /// Search Nixpkgs or NixOS options
@@ -73,13 +85,13 @@ enum Commands {
     /// Update the system flake lock
     Update {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
+        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
     },
     /// Check if the flake lock is outdated
     Check {
         /// Path to the system configuration flake
-        #[clap(env = "SYS_FLAKE_PATH", value_parser)]
+        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
         flake_path: PathBuf,
     },
 }
@@ -88,6 +100,7 @@ impl Display for Commands {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let display = match self {
             Commands::Apply { .. } => "apply",
+            Commands::Build { .. } => "build",
             Commands::ApplyUser { .. } => "apply-user",
             Commands::Clean => "clean",
             Commands::Prune => "prune",
@@ -188,6 +201,41 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
                 format!("{flake_path}#{user}"),
             )
             .run()?;
+        }
+        Commands::Build {
+            flake_path,
+            system,
+            vm,
+        } => {
+            let system = match system {
+                Some(s) => s.to_owned(),
+                None => cmd!("hostname").read()?,
+            };
+            let pwd = current_dir()?;
+            set_current_dir(flake_path)?;
+
+            let flake_path = flake_path
+                .as_os_str()
+                .to_str()
+                .expect("Couldn't convert flake path to string!");
+            info!(format!("Building system configuration for {system}"));
+            let build_type = match vm {
+                true => "vm",
+                false => "toplevel",
+            };
+            cmd!(
+                "nix",
+                "build",
+                format!(".#nixosConfigurations.{system}.config.system.build.{build_type}")
+            )
+            .run()?;
+            match vm {
+                true => info!(format!(
+                    "VM image built. Run {flake_path}/result/bin/run-{system}-vm to start it."
+                )),
+                false => info!(format!("System built and symlinked to {flake_path}/result")),
+            }
+            set_current_dir(pwd)?;
         }
         Commands::Clean => {
             info!("Running garbage collection");
