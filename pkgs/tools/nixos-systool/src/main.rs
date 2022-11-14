@@ -20,10 +20,37 @@ const SUCCESS_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
 /// How long the failure notification should be displayed before disappearing
 const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
 
+/// Utility to handle changing directories and returning after finishing
+#[derive(Debug)]
+struct Directory {
+    previous_dir: PathBuf,
+}
+
+impl Directory {
+    fn enter(dir: &PathBuf) -> Result<Self, Box<dyn Error>> {
+        let previous_dir = current_dir()?;
+        set_current_dir(dir)?;
+        Ok(Directory { previous_dir })
+    }
+}
+
+impl Drop for Directory {
+    fn drop(&mut self) {
+        set_current_dir(&self.previous_dir).unwrap_or_else(|_| {
+            panic!(
+                "Couldn't return to previous directory: {:?}",
+                self.previous_dir
+            )
+        });
+    }
+}
+
 #[derive(Debug, ThisError)]
 enum SystoolError {
     #[error("Cannot `apply` to non-NixOS systems: {0}")]
     NonNixOsSystem(os_info::Type),
+    #[error("Untracked files in flake: \n{0}")]
+    UntrackedFiles(String),
 }
 
 #[derive(Debug, Parser)]
@@ -31,6 +58,9 @@ enum SystoolError {
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
+    /// Path to the system configuration flake
+    #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
+    flake_path: PathBuf,
 }
 
 /// NixOS system management tool
@@ -46,9 +76,6 @@ enum Commands {
     },
     /// Apply user configuration using home-manager
     ApplyUser {
-        /// Path to the system configuration flake
-        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
-        flake_path: PathBuf,
         /// User configuration to apply, defaults to the
         /// current user.
         #[clap(short = 'u', long = "user", value_parser)]
@@ -58,9 +85,6 @@ enum Commands {
     Clean,
     /// Build the system configuration, without applying it
     Build {
-        /// Path to the system configuration flake
-        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
-        flake_path: PathBuf,
         /// Which system to build, defaults to the current host
         #[clap(value_parser)]
         system: Option<String>,
@@ -83,17 +107,9 @@ enum Commands {
         options: bool,
     },
     /// Update the system flake lock
-    Update {
-        /// Path to the system configuration flake
-        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
-        flake_path: PathBuf,
-    },
+    Update,
     /// Check if the flake lock is outdated
-    Check {
-        /// Path to the system configuration flake
-        #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
-        flake_path: PathBuf,
-    },
+    Check,
 }
 
 impl Display for Commands {
@@ -105,8 +121,8 @@ impl Display for Commands {
             Commands::Clean => "clean",
             Commands::Prune => "prune",
             Commands::Search { .. } => "search",
-            Commands::Update { .. } => "update",
-            Commands::Check { .. } => "check",
+            Commands::Update => "update",
+            Commands::Check => "check",
         };
         f.write_str(display)
     }
@@ -118,8 +134,38 @@ impl Commands {
     fn should_notify(&self) -> bool {
         !matches!(
             self,
-            Commands::Search { .. } | Commands::Update { .. } | Commands::Check { .. }
+            Commands::Search { .. } | Commands::Update | Commands::Check
         )
+    }
+
+    /// Checks for any untracked files in the system flake and reports an
+    /// error if there are. Usually this is something that will cause confusion
+    /// if it's allowed to slip by.
+    fn check_untracked_files(&self, flake_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+        if matches!(
+            self,
+            Commands::Search { .. } | Commands::Update | Commands::Check
+        ) {
+            return Ok(());
+        }
+
+        let _dir = Directory::enter(flake_path)?;
+        let status = cmd!("git", "status", "--short").read()?;
+        let untracked = status
+            .lines()
+            .filter(|l| l.starts_with("??"))
+            .map(|l| {
+                l.strip_prefix("?? ")
+                    .expect("Couldn't strip prefix.")
+                    .to_owned()
+            })
+            .collect::<Vec<String>>();
+
+        if untracked.is_empty() {
+            Ok(())
+        } else {
+            Err(SystoolError::UntrackedFiles(untracked.join("\n")).into())
+        }
     }
 }
 
@@ -131,8 +177,9 @@ fn main() {
         exit(1);
     }
 
-    let command = Cli::parse().command;
-    if let Err(e) = run_command(&command) {
+    let cli = Cli::parse();
+    let command = cli.command;
+    if let Err(e) = run_command(&command, &cli.flake_path) {
         error!("Error running command");
         error!(format!("  - {e}"));
         if command.should_notify() {
@@ -162,7 +209,10 @@ fn main() {
     };
 }
 
-fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
+fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    // Check for untracked files if we need to
+    command.check_untracked_files(flake_path)?;
+
     match command {
         Commands::Apply { method } => {
             // If we're not running on NixOS, we want to return an error and not
@@ -181,10 +231,7 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
             // system flake repository when run using `sudo` due to a CVE fix.
             cmd!("nixos-rebuild", "--use-remote-sudo", method).run()?;
         }
-        Commands::ApplyUser {
-            flake_path,
-            target_user,
-        } => {
+        Commands::ApplyUser { target_user } => {
             let flake_path = flake_path
                 .as_os_str()
                 .to_str()
@@ -202,17 +249,13 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
             )
             .run()?;
         }
-        Commands::Build {
-            flake_path,
-            system,
-            vm,
-        } => {
+        Commands::Build { system, vm } => {
             let system = match system {
                 Some(s) => s.to_owned(),
                 None => cmd!("hostname").read()?,
             };
-            let pwd = current_dir()?;
-            set_current_dir(flake_path)?;
+
+            let _dir = Directory::enter(flake_path)?;
 
             let flake_path = flake_path
                 .as_os_str()
@@ -235,7 +278,6 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
                 )),
                 false => info!(format!("System built and symlinked to {flake_path}/result")),
             }
-            set_current_dir(pwd)?;
         }
         Commands::Clean => {
             info!("Running garbage collection");
@@ -276,18 +318,15 @@ fn run_command(command: &Commands) -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        Commands::Update { flake_path } => {
-            let pwd = current_dir()?;
-            set_current_dir(flake_path)?;
-
+        Commands::Update => {
+            let _dir = Directory::enter(flake_path)?;
             info!("Updating system configuration flake");
             cmd!("nix", "flake", "update").run()?;
             // commit changes
             cmd!("git", "add", "flake.lock").run()?;
             cmd!("git", "commit", "-m", "Update flake lock").run()?;
-            set_current_dir(pwd)?;
         }
-        Commands::Check { flake_path } => {
+        Commands::Check => {
             let mut flake_lock_filename = flake_path.clone();
             flake_lock_filename.push("flake");
             flake_lock_filename.set_extension("lock");
