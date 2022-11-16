@@ -1,3 +1,4 @@
+mod excursion;
 mod flake_lock;
 mod messages;
 
@@ -5,10 +6,10 @@ use crate::flake_lock::{FlakeLock, FlakeStatus};
 
 use clap::{Parser, Subcommand};
 use duct::cmd;
+use excursion::Directory;
 use nix::unistd::Uid;
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
-use std::env::{current_dir, set_current_dir};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -19,31 +20,6 @@ use thiserror::Error as ThisError;
 const SUCCESS_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
 /// How long the failure notification should be displayed before disappearing
 const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
-
-/// Utility to handle changing directories and returning after finishing
-#[derive(Debug)]
-struct Directory {
-    previous_dir: PathBuf,
-}
-
-impl Directory {
-    fn enter(dir: &PathBuf) -> Result<Self, Box<dyn Error>> {
-        let previous_dir = current_dir()?;
-        set_current_dir(dir)?;
-        Ok(Directory { previous_dir })
-    }
-}
-
-impl Drop for Directory {
-    fn drop(&mut self) {
-        set_current_dir(&self.previous_dir).unwrap_or_else(|_| {
-            panic!(
-                "Couldn't return to previous directory: {:?}",
-                self.previous_dir
-            )
-        });
-    }
-}
 
 #[derive(Debug, ThisError)]
 enum SystoolError {
@@ -66,11 +42,12 @@ struct Cli {
 /// NixOS system management tool
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Apply the system configuration using nixos-apply
+    /// Apply the system configuration using nixos-rebuild
     Apply {
         /// Method used to apply the system configuration
         ///
-        /// Must be a valid build type accepted by `nixos-rebuild`.
+        /// Must be a valid build type accepted by `nixos-rebuild`, e.g.
+        /// switch, boot, build, etc.
         #[clap(value_parser)]
         method: Option<String>,
     },
@@ -219,7 +196,7 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
             // try to run this command.
             let info = os_info::get();
             if !matches!(info.os_type(), os_info::Type::NixOS) {
-                return Err(Box::new(SystoolError::NonNixOsSystem(info.os_type())));
+                return Err(SystoolError::NonNixOsSystem(info.os_type()).into());
             }
 
             let method = match method {
@@ -227,9 +204,18 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
                 Some(method) => method.to_string(),
             };
             info!("Applying system configuration");
-            // Use `--use-remote-sudo` flag because Git won't recognize the
-            // system flake repository when run using `sudo` due to a CVE fix.
-            cmd!("nixos-rebuild", "--use-remote-sudo", method).run()?;
+            cmd!(
+                "nixos-rebuild",
+                // Use `--use-remote-sudo` flag because Git won't recognize the
+                // system flake repository when run using `sudo` due to a CVE fix.
+                "--use-remote-sudo",
+                // Don't assume that /etc/nixos/flake.nix exists, just specify the
+                // flake path directly.
+                "--flake",
+                flake_path,
+                method
+            )
+            .run()?;
         }
         Commands::ApplyUser { target_user } => {
             let flake_path = flake_path
