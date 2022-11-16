@@ -127,7 +127,14 @@ impl Commands {
         }
 
         let _dir = Directory::enter(flake_path)?;
-        let status = cmd!("git", "status", "--short").read()?;
+
+        let status = match cmd!("git", "status", "--short").stderr_null().read() {
+            Ok(s) => s,
+            // If we get an error here, it's probably because we're not in a
+            // Git repo, which means we don't care about untracked files.
+            Err(_) => return Ok(()),
+        };
+
         let untracked = status
             .lines()
             .filter(|l| l.starts_with("??"))
