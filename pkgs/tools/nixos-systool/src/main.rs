@@ -27,6 +27,8 @@ enum SystoolError {
     NonNixOsSystem(os_info::Type),
     #[error("Untracked files in flake: \n{0}")]
     UntrackedFiles(String),
+    #[error("Invalid options: {0}")]
+    InvalidOptions(String),
 }
 
 #[derive(Debug, Parser)]
@@ -82,6 +84,11 @@ enum Commands {
         /// Search for options instead of packages
         #[clap(short, long, value_parser)]
         options: bool,
+        /// Search on the Home Manager option search website in a browser.
+        /// Implies the `-b` option because there is no CLI version. Use
+        /// regular options `-o` search for that.
+        #[clap(short = 'm', long, value_parser)]
+        home_manager: bool,
     },
     /// Update the system flake lock
     Update,
@@ -286,8 +293,25 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
             query,
             browser,
             options,
+            home_manager,
         } => {
-            if *options {
+            // first check if we're doing something wrong
+            if *home_manager && (*options || *browser) {
+                return Err(SystoolError::InvalidOptions(
+                    "cannot use --home-manager with other options".to_owned(),
+                )
+                .into());
+            }
+            // If we're doing a home-manager search, then use the browser
+            if *home_manager {
+                info!(format!("Searching home-manager for `{query}`"));
+                cmd!(
+                    "xdg-open",
+                    format!("https://mipmip.github.io/home-manager-option-search/?{query}")
+                )
+                .run()?;
+            } else if *options {
+                // If we're searching for options, use `manix` or a browser
                 info!(format!("Searching options for '{query}'"));
                 if *browser {
                     cmd!(
@@ -299,6 +323,7 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
                     cmd!("manix", query).run()?;
                 }
             } else {
+                // Otherwise search for packages in Nixpkgs
                 info!(format!("Searching nixpkgs for '{query}'"));
                 if *browser {
                     cmd!(
