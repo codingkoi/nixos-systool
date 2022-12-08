@@ -1,6 +1,8 @@
+use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use duct::cmd;
 use nix::unistd::Uid;
+use nixos_systool::config::Config;
 use nixos_systool::excursion::Directory;
 use nixos_systool::flake_lock::{FlakeLock, FlakeStatus};
 use nixos_systool::{error, info};
@@ -8,18 +10,14 @@ use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
 use std::process::exit;
 use thiserror::Error as ThisError;
 
-/// How long the success notification should be displayed before disappearing
-const SUCCESS_TIMEOUT: Timeout = Timeout::Milliseconds(10_000);
-/// How long the failure notification should be displayed before disappearing
-const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
+const CRATE_NAME: &str = clap::crate_name!();
 
 #[derive(Debug, ThisError)]
 enum SystoolError {
-    #[error("Cannot `{0}` on non-NixOS systems: {1}")]
+    #[error("Cannot `{0}` on {1} systems")]
     NonNixOsSystem(Commands, os_info::Type),
     #[error("Untracked files in flake: \n{0}")]
     UntrackedFiles(String),
@@ -34,7 +32,7 @@ struct Cli {
     command: Commands,
     /// Path to the system configuration flake
     #[arg(short, long, env = "SYS_FLAKE_PATH")]
-    flake_path: PathBuf,
+    flake_path: Utf8PathBuf,
 }
 
 /// NixOS system management tool
@@ -72,8 +70,10 @@ enum Commands {
         /// Pattern to search for in Nixpkgs
         query: String,
         /// Search on the NixOS website in a browser
+        #[arg(short, long)]
         browser: bool,
         /// Search for options instead of packages
+        #[arg(short, long)]
         options: bool,
         /// Search on the Home Manager option search website in a browser.
         /// Implies the `-b` option because there is no CLI version. Use
@@ -116,7 +116,11 @@ impl Commands {
     /// Checks for any untracked files in the system flake and reports an
     /// error if there are. Usually this is something that will cause confusion
     /// if it's allowed to slip by.
-    fn check_untracked_files(&self, flake_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    fn check_untracked_files(
+        &self,
+        flake_path: &Utf8PathBuf,
+        cfg: &Config,
+    ) -> Result<(), Box<dyn Error>> {
         if matches!(
             self,
             Commands::Search { .. } | Commands::Update | Commands::Check
@@ -126,7 +130,10 @@ impl Commands {
 
         let _dir = Directory::enter(flake_path)?;
 
-        let status = match cmd!("git", "status", "--short").stderr_null().read() {
+        let status = match cmd!(&cfg.external_commands.git, "status", "--short")
+            .stderr_null()
+            .read()
+        {
             Ok(s) => s,
             // If we get an error here, it's probably because we're not in a
             // Git repo, which means we don't care about untracked files.
@@ -158,10 +165,8 @@ impl Commands {
             Commands::Apply { .. } => {
                 let info = os_info::get();
                 match info.os_type() {
-                    os_info::Type::NixOS => {
-                        Err(SystoolError::NonNixOsSystem(self.clone(), info.os_type()).into())
-                    }
-                    _ => Ok(()),
+                    os_info::Type::NixOS => Ok(()),
+                    _ => Err(SystoolError::NonNixOsSystem(self.clone(), info.os_type()).into()),
                 }
             }
             _ => Ok(()),
@@ -173,13 +178,17 @@ fn main() {
     // For security reasons, I don't want this tool run as root, so check and exit
     // if that's the case.
     if Uid::effective().is_root() {
-        error!("For security reasons, nixos-systool must not be run as root");
+        error!(format!(
+            "For security reasons, {CRATE_NAME} must not be run as root"
+        ));
         exit(1);
     }
 
+    let cfg =
+        confy::load::<Config>(CRATE_NAME, "config").expect("Couldn't load configuration file.");
     let cli = Cli::parse();
     let command = cli.command;
-    if let Err(e) = run_command(&command, &cli.flake_path) {
+    if let Err(e) = run_command(&command, &cli.flake_path, &cfg) {
         error!("Error running command");
         error!(format!("  - {e}"));
         if command.should_notify() {
@@ -189,9 +198,11 @@ fn main() {
                     format!("`{command}` command execution failed.\nSee output for details")
                         .as_str(),
                 )
-                .appname("nixos-systool")
+                .appname(CRATE_NAME)
                 .hint(Hint::Urgency(Urgency::Critical))
-                .timeout(FAILURE_TIMEOUT)
+                .timeout(Timeout::Milliseconds(
+                    cfg.notifications.failure_timeout * 1000,
+                ))
                 .show()
                 .ok();
             exit(1);
@@ -202,16 +213,22 @@ fn main() {
         Notification::new()
             .summary("NixOS System Tool")
             .body(format!("`{command}` command executed successfully").as_str())
-            .appname("nixos-systool")
-            .timeout(SUCCESS_TIMEOUT)
+            .appname(CRATE_NAME)
+            .timeout(Timeout::Milliseconds(
+                cfg.notifications.success_timeout * 1000,
+            ))
             .show()
             .ok();
     };
 }
 
-fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+fn run_command(
+    command: &Commands,
+    flake_path: &Utf8PathBuf,
+    cfg: &Config,
+) -> Result<(), Box<dyn Error>> {
     // Check for untracked files if we need to
-    command.check_untracked_files(flake_path)?;
+    command.check_untracked_files(flake_path, cfg)?;
     // Check if this command can be run on this system
     command.valid_on_system()?;
 
@@ -236,10 +253,7 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
             .run()?;
         }
         Commands::ApplyUser { target_user } => {
-            let flake_path = flake_path
-                .as_os_str()
-                .to_str()
-                .expect("Couldn't convert flake path to string!");
+            let flake_path = flake_path.as_str();
             let user = match target_user {
                 Some(user) => user.to_owned(),
                 None => cmd!("whoami").read()?,
@@ -261,10 +275,7 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
 
             let _dir = Directory::enter(flake_path)?;
 
-            let flake_path = flake_path
-                .as_os_str()
-                .to_str()
-                .expect("Couldn't convert flake path to string!");
+            let flake_path = flake_path.as_str();
             info!(format!("Building system configuration for {system}"));
             let build_type = match vm {
                 true => "vm",
@@ -310,7 +321,7 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
             if *home_manager {
                 info!(format!("Searching home-manager for `{query}`"));
                 cmd!(
-                    "xdg-open",
+                    &cfg.external_commands.browser_open,
                     format!("https://mipmip.github.io/home-manager-option-search/?{query}")
                 )
                 .run()?;
@@ -319,19 +330,19 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
                 info!(format!("Searching options for '{query}'"));
                 if *browser {
                     cmd!(
-                        "xdg-open",
+                        &cfg.external_commands.browser_open,
                         format!("https://search.nixos.org/options?channel=unstable&query={query}")
                     )
                     .run()?;
                 } else {
-                    cmd!("manix", query).run()?;
+                    cmd!(&cfg.external_commands.manix, query).run()?;
                 }
             } else {
                 // Otherwise search for packages in Nixpkgs
                 info!(format!("Searching nixpkgs for '{query}'"));
                 if *browser {
                     cmd!(
-                        "xdg-open",
+                        &cfg.external_commands.browser_open,
                         format!("https://search.nixos.org/packages?channel=unstable&query={query}")
                     )
                     .run()?;
@@ -345,8 +356,14 @@ fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn E
             info!("Updating system configuration flake");
             cmd!("nix", "flake", "update").run()?;
             // commit changes
-            cmd!("git", "add", "flake.lock").run()?;
-            cmd!("git", "commit", "-m", "Update flake lock").run()?;
+            cmd!(&cfg.external_commands.git, "add", "flake.lock").run()?;
+            cmd!(
+                &cfg.external_commands.git,
+                "commit",
+                "-m",
+                "Update flake lock"
+            )
+            .run()?;
         }
         Commands::Check => {
             let mut flake_lock_filename = flake_path.clone();
