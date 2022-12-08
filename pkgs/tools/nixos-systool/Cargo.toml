@@ -1,7 +1,7 @@
 [package]
 name = "nixos-systool"
 authors = ["Jeremy Shoemaker <jeremy@codingkoi.com>"]
-version = "1.2.5"
+version = "1.3.0"
 edition = "2021"
 
 [profile.release]
@@ -14,9 +14,9 @@ strip = "symbols"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "3.1", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive", "env"] }
 duct = "0.13"
-nix = "0.23"
+nix = "0.26"
 notify-rust = "4"
 os_info = { version = "3", default-features = false }
 owo-colors = "3.2"

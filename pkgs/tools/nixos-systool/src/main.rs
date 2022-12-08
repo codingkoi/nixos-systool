@@ -1,13 +1,9 @@
-mod excursion;
-mod flake_lock;
-mod messages;
-
-use crate::flake_lock::{FlakeLock, FlakeStatus};
-
 use clap::{Parser, Subcommand};
 use duct::cmd;
-use excursion::Directory;
 use nix::unistd::Uid;
+use nixos_systool::excursion::Directory;
+use nixos_systool::flake_lock::{FlakeLock, FlakeStatus};
+use nixos_systool::{error, info};
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
 use std::error::Error;
@@ -23,8 +19,8 @@ const FAILURE_TIMEOUT: Timeout = Timeout::Milliseconds(60_000);
 
 #[derive(Debug, ThisError)]
 enum SystoolError {
-    #[error("Cannot `apply` to non-NixOS systems: {0}")]
-    NonNixOsSystem(os_info::Type),
+    #[error("Cannot `{0}` on non-NixOS systems: {1}")]
+    NonNixOsSystem(Commands, os_info::Type),
     #[error("Untracked files in flake: \n{0}")]
     UntrackedFiles(String),
     #[error("Invalid options: {0}")]
@@ -32,17 +28,17 @@ enum SystoolError {
 }
 
 #[derive(Debug, Parser)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
     /// Path to the system configuration flake
-    #[clap(short, long, env = "SYS_FLAKE_PATH", value_parser)]
+    #[arg(short, long, env = "SYS_FLAKE_PATH")]
     flake_path: PathBuf,
 }
 
 /// NixOS system management tool
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, Clone)]
 enum Commands {
     /// Apply the system configuration using nixos-rebuild
     Apply {
@@ -50,14 +46,13 @@ enum Commands {
         ///
         /// Must be a valid build type accepted by `nixos-rebuild`, e.g.
         /// switch, boot, build, etc.
-        #[clap(value_parser)]
         method: Option<String>,
     },
     /// Apply user configuration using home-manager
     ApplyUser {
         /// User configuration to apply, defaults to the
         /// current user.
-        #[clap(short = 'u', long = "user", value_parser)]
+        #[arg(short = 'u', long = "user")]
         target_user: Option<String>,
     },
     /// Run garbage collection on the Nix store
@@ -65,10 +60,9 @@ enum Commands {
     /// Build the system configuration, without applying it
     Build {
         /// Which system to build, defaults to the current host
-        #[clap(value_parser)]
         system: Option<String>,
         /// Whether to build a VM image instead
-        #[clap(long, value_parser)]
+        #[arg(long)]
         vm: bool,
     },
     /// Prune old generations from the Nix store
@@ -76,18 +70,15 @@ enum Commands {
     /// Search Nixpkgs or NixOS options
     Search {
         /// Pattern to search for in Nixpkgs
-        #[clap(value_parser)]
         query: String,
         /// Search on the NixOS website in a browser
-        #[clap(short, long, value_parser)]
         browser: bool,
         /// Search for options instead of packages
-        #[clap(short, long, value_parser)]
         options: bool,
         /// Search on the Home Manager option search website in a browser.
         /// Implies the `-b` option because there is no CLI version. Use
         /// regular options `-o` search for that.
-        #[clap(short = 'm', long, value_parser)]
+        #[arg(short = 'm', long)]
         home_manager: bool,
     },
     /// Update the system flake lock
@@ -158,6 +149,24 @@ impl Commands {
             Err(SystoolError::UntrackedFiles(untracked.join("\n")).into())
         }
     }
+
+    // Check to see if this command is valid to run on this system.
+    // Currently this means whether or not the command can be run on a
+    // non-NixOS system, e.g. on a system with just `nix` installed.
+    fn valid_on_system(&self) -> Result<(), Box<dyn Error>> {
+        match self {
+            Commands::Apply { .. } => {
+                let info = os_info::get();
+                match info.os_type() {
+                    os_info::Type::NixOS => {
+                        Err(SystoolError::NonNixOsSystem(self.clone(), info.os_type()).into())
+                    }
+                    _ => Ok(()),
+                }
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 fn main() {
@@ -203,16 +212,11 @@ fn main() {
 fn run_command(command: &Commands, flake_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     // Check for untracked files if we need to
     command.check_untracked_files(flake_path)?;
+    // Check if this command can be run on this system
+    command.valid_on_system()?;
 
     match command {
         Commands::Apply { method } => {
-            // If we're not running on NixOS, we want to return an error and not
-            // try to run this command.
-            let info = os_info::get();
-            if !matches!(info.os_type(), os_info::Type::NixOS) {
-                return Err(SystoolError::NonNixOsSystem(info.os_type()).into());
-            }
-
             let method = match method {
                 None => "switch".to_string(),
                 Some(method) => method.to_string(),

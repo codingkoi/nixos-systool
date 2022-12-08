@@ -28,7 +28,8 @@
         # `nix develop`
         devShells.default = with pkgs;
           mkShell {
-            nativeBuildInputs = [ rust-analyzer rustc cargo rustfmt clippy ];
+            nativeBuildInputs =
+              [ rust-analyzer rustc cargo cargo-outdated rustfmt clippy ];
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
           };
       });

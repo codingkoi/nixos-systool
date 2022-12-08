@@ -29,8 +29,8 @@ struct InputLock {
 }
 
 pub enum FlakeStatus {
-    UpToDate { last_update: Date<Utc> },
-    Outdated { last_update: Date<Utc> },
+    UpToDate { last_update: NaiveDate },
+    Outdated { last_update: NaiveDate },
 }
 
 #[derive(Error, Debug)]
@@ -57,9 +57,7 @@ impl FlakeLock {
     pub fn check(&self) -> Result<FlakeStatus, FlakeCheckError> {
         if let Some(nixpkgs) = self.nodes.get("nixpkgs") {
             let now = Utc::now();
-            // Have to jump through hoops because DateTime doesn't
-            // implement From for integers, probably for good reason.
-            let last_update_ts = NaiveDateTime::from_timestamp(
+            let last_update_ts = NaiveDateTime::from_timestamp_opt(
                 nixpkgs
                     .locked
                     .as_ref()
@@ -67,14 +65,18 @@ impl FlakeLock {
                     .last_modified,
                 0,
             );
-            let last_update = DateTime::from_utc(last_update_ts, Utc);
+            let last_update = DateTime::from_utc(
+                last_update_ts
+                    .expect("Couldn't find or parse last modified time for `nixpkgs` input."),
+                Utc,
+            );
             if now - last_update >= Duration::weeks(2) {
                 Ok(FlakeStatus::Outdated {
-                    last_update: last_update.date(),
+                    last_update: last_update.date_naive(),
                 })
             } else {
                 Ok(FlakeStatus::UpToDate {
-                    last_update: last_update.date(),
+                    last_update: last_update.date_naive(),
                 })
             }
         } else {
