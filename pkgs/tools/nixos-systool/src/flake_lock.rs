@@ -29,8 +29,14 @@ struct InputLock {
 }
 
 pub enum FlakeStatus {
-    UpToDate { last_update: NaiveDate },
-    Outdated { last_update: NaiveDate },
+    UpToDate {
+        last_update: NaiveDate,
+        since: Duration,
+    },
+    Outdated {
+        last_update: NaiveDate,
+        since: Duration,
+    },
 }
 
 #[derive(Error, Debug)]
@@ -54,14 +60,14 @@ impl FlakeLock {
         Ok(serde_json::from_str::<Self>(&content)?)
     }
 
-    pub fn check(&self) -> Result<FlakeStatus, FlakeCheckError> {
+    pub fn check(&self, allowed_age: u32) -> Result<FlakeStatus, FlakeCheckError> {
         if let Some(nixpkgs) = self.nodes.get("nixpkgs") {
             let now = Utc::now();
             let last_update_ts = NaiveDateTime::from_timestamp_opt(
                 nixpkgs
                     .locked
                     .as_ref()
-                    .expect("`nixpkgs` is missing a `locked` section in flake lock!")
+                    .expect("`nixpkgs` input is missing a `locked` section in flake lock!")
                     .last_modified,
                 0,
             );
@@ -70,13 +76,16 @@ impl FlakeLock {
                     .expect("Couldn't find or parse last modified time for `nixpkgs` input."),
                 Utc,
             );
-            if now - last_update >= Duration::weeks(2) {
+            let duration = now - last_update;
+            if duration >= Duration::days(allowed_age as i64) {
                 Ok(FlakeStatus::Outdated {
                     last_update: last_update.date_naive(),
+                    since: duration,
                 })
             } else {
                 Ok(FlakeStatus::UpToDate {
                     last_update: last_update.date_naive(),
+                    since: duration,
                 })
             }
         } else {

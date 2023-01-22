@@ -1,13 +1,17 @@
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
+use directories::BaseDirs;
 use duct::cmd;
+use figment::providers::{Format, Serialized, Toml};
+use figment::Figment;
 use nix::unistd::Uid;
 use nixos_systool::config::Config;
 use nixos_systool::excursion::Directory;
 use nixos_systool::flake_lock::{FlakeLock, FlakeStatus};
-use nixos_systool::{error, info};
+use nixos_systool::{error, info, warn};
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 use owo_colors::OwoColorize;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::process::exit;
@@ -25,18 +29,29 @@ enum SystoolError {
     InvalidOptions(String),
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Serialize, Deserialize)]
+struct CliConfig {
+    #[serde(flatten)]
+    config_file: Config,
+    #[serde(flatten)]
+    cli: Cli,
+}
+
+#[derive(Debug, Parser, Serialize, Deserialize)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
-    /// Path to the system configuration flake
+    /// Path to the system configuration flake repository
     #[arg(short, long, env = "SYS_FLAKE_PATH")]
-    flake_path: Utf8PathBuf,
+    flake_path: String,
+    /// Path to the current system flake in the Nix store
+    #[arg(short, long, default_value = "/etc/current-system-flake")]
+    current_flake_path: String,
 }
 
 /// NixOS system management tool
-#[derive(Debug, Subcommand, Clone)]
+#[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 enum Commands {
     /// Apply the system configuration using nixos-rebuild
     Apply {
@@ -84,7 +99,14 @@ enum Commands {
     /// Update the system flake lock
     Update,
     /// Check if the flake lock is outdated
-    Check,
+    Check {
+        /// Suppress the warning about using the repository flake.lock for
+        /// the version check instead of the flake.lock used to build the system.
+        #[arg(long)]
+        no_warning: bool,
+    },
+    /// Print the currently loaded configuration including defaults
+    PrintConfig,
 }
 
 impl Display for Commands {
@@ -97,7 +119,8 @@ impl Display for Commands {
             Commands::Prune => "prune",
             Commands::Search { .. } => "search",
             Commands::Update => "update",
-            Commands::Check => "check",
+            Commands::Check { .. } => "check",
+            Commands::PrintConfig => "print-config",
         };
         f.write_str(display)
     }
@@ -109,7 +132,10 @@ impl Commands {
     fn should_notify(&self) -> bool {
         !matches!(
             self,
-            Commands::Search { .. } | Commands::Update | Commands::Check
+            Commands::Search { .. }
+                | Commands::Update
+                | Commands::Check { .. }
+                | Commands::PrintConfig
         )
     }
 
@@ -123,7 +149,10 @@ impl Commands {
     ) -> Result<(), Box<dyn Error>> {
         if matches!(
             self,
-            Commands::Search { .. } | Commands::Update | Commands::Check
+            Commands::Search { .. }
+                | Commands::Update
+                | Commands::Check { .. }
+                | Commands::PrintConfig
         ) {
             return Ok(());
         }
@@ -184,13 +213,31 @@ fn main() {
         exit(1);
     }
 
-    let cfg =
-        confy::load::<Config>(CRATE_NAME, "config").expect("Couldn't load configuration file.");
-    let cli = Cli::parse();
-    let command = cli.command;
-    if let Err(e) = run_command(&command, &cli.flake_path, &cfg) {
+    // Create a Figment for merging configuration sources and load the defaults
+    let mut fig = Figment::new().merge(Serialized::defaults(Config::default()));
+    // Load the user configuration if we can find it
+    if let Some(base_dirs) = BaseDirs::new() {
+        let mut config_base = Utf8PathBuf::from_path_buf(base_dirs.config_dir().into())
+            .expect("Couldn't parse config path.");
+        config_base.push("nixos-systool");
+        config_base.push("config.toml");
+        fig = fig.merge(Toml::file(config_base.as_str()));
+    }
+    // Add the command line options
+    let config: CliConfig = fig
+        .merge(Serialized::defaults(Cli::parse()))
+        .extract()
+        .unwrap_or_else(|e| {
+            error!("Error loading configuration");
+            error!(format!("- {e}"));
+            exit(1);
+        });
+
+    let command = config.cli.command;
+    let cfg = config.config_file;
+    if let Err(e) = run_command(&command, &config.cli.flake_path.into(), &cfg) {
         error!("Error running command");
-        error!(format!("  - {e}"));
+        error!(format!("- {e}"));
         if command.should_notify() {
             Notification::new()
                 .summary("NixOS System Tool")
@@ -365,23 +412,58 @@ fn run_command(
             )
             .run()?;
         }
-        Commands::Check => {
-            let mut flake_lock_filename = flake_path.clone();
+        Commands::Check { no_warning } => {
+            // If we have a link to the current system flake in /etc/current-system-flake
+            // then use it for the check, otherwise, fallback to the less accurate
+            // check of the flake repo path.
+            let current_system_flake = Utf8Path::new("/etc/current-system-flake");
+            let mut flake_lock_filename = match current_system_flake.exists() {
+                true => current_system_flake.into(),
+                false => {
+                    if !no_warning {
+                        warn!(format!(
+                            "The flake in the the repository may not be applied to the system. \
+                             Make sure to use `{CRATE_NAME} apply` or create a symlink in \
+                             /etc/current-system-flake pointing to the source of the flake in \
+                             the Nix store used to build the current system for a more accurate \
+                             version check."
+                        ));
+
+                        warn!("\nAdd the following to your nixosSystem configuration to do so:");
+                        warn!("    environment.etc.\"current-system-flake\".source = inputs.self;");
+                    };
+                    flake_path.clone()
+                }
+            };
+            // Add the path parts for the "flake.lock" file.
             flake_lock_filename.push("flake");
             flake_lock_filename.set_extension("lock");
-            let check_result = FlakeLock::load(flake_lock_filename)?.check()?;
+
+            let check_result =
+                FlakeLock::load(&flake_lock_filename)?.check(cfg.system_check.allowed_age)?;
             match check_result {
-                FlakeStatus::UpToDate { last_update } => {
-                    info!("System flake lock is up to date.");
-                    info!(format!("  Last updated on {last_update}"));
-                }
-                FlakeStatus::Outdated { last_update } => {
-                    error!(format!(
-                        "System flake lock has been out of date since {last_update}"
+                FlakeStatus::UpToDate { last_update, since } => {
+                    let days_ago = since.num_days();
+                    info!(format!(
+                        "System flake ({flake_lock_filename}) is up to date."
                     ));
-                    error!("Please update as soon as possible using `nixos-systool update`.");
+                    info!(format!(
+                        "Last updated on {last_update} ({days_ago} days ago)"
+                    ));
+                }
+                FlakeStatus::Outdated { last_update, since } => {
+                    let days_ago = since.num_days();
+                    error!(format!(
+                        "System flake ({flake_lock_filename}) is out of date, last update was on {last_update} ({days_ago} days ago)"
+                    ));
+                    error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
                 }
             }
+        }
+        Commands::PrintConfig => {
+            let rendered_config =
+                toml::to_string(&cfg).expect("Couldn't render configuration to TOML!");
+            println!("{rendered_config}")
         }
     }
     Ok(())

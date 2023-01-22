@@ -6,8 +6,15 @@ macro_rules! info {
 }
 
 #[macro_export]
+macro_rules! warn {
+    ( $msg:expr ) => {
+        println!("{}", $msg.yellow())
+    };
+}
+
+#[macro_export]
 macro_rules! error {
     ( $msg:expr ) => {
-        eprintln!("{}", $msg.red().italic())
+        eprintln!("{}", $msg.red().bold())
     };
 }

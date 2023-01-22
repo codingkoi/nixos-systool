@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub notifications: NotificationsConfig,
+    pub system_check: SystemCheckConfig,
     pub external_commands: ExternalCommandsConfig,
 }
 
@@ -21,6 +22,21 @@ impl Default for NotificationsConfig {
         Self {
             success_timeout: 10,
             failure_timeout: 60,
+        }
+    }
+}
+
+/// Configuration for the system check command i.e. `check`
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemCheckConfig {
+    /// How many days until the nixpkgs version is considered out of date.
+    pub allowed_age: u32,
+}
+
+impl Default for SystemCheckConfig {
+    fn default() -> Self {
+        Self {
+            allowed_age: 14, // days
         }
     }
 }
