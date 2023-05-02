@@ -11,7 +11,7 @@ use nixos_systool::config::Config;
 use nixos_systool::excursion::Directory;
 use nixos_systool::flake_lock::{FlakeLock, FlakeStatus};
 use nixos_systool::{error, info, warn};
-use notify_rust::{Hint, Notification, Timeout, Urgency};
+use notify_rust::{Notification, Timeout};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -205,6 +205,16 @@ impl Commands {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn add_notification_hints(notification: &mut Notification) {
+    use notify_rust::{Hint, Urgency};
+    notification.hint(Hint::Urgency(Urgency::Critical))
+}
+
+// No-op for non Linux hosts
+#[cfg(not(target_os = "linux"))]
+fn add_notification_hints(_notification: &mut Notification) {}
+
 fn main() {
     // For security reasons, I don't want this tool run as root, so check and exit
     // if that's the case.
@@ -241,20 +251,19 @@ fn main() {
         error!("Error running command");
         error!(format!("- {e}"));
         if command.should_notify() {
-            Notification::new()
+            let mut notification = Notification::new();
+            notification
                 .summary("NixOS System Tool")
                 .body(
                     format!("`{command}` command execution failed.\nSee output for details")
                         .as_str(),
                 )
                 .appname(CRATE_NAME)
-                .hint(Hint::Urgency(Urgency::Critical))
                 .timeout(Timeout::Milliseconds(
                     cfg.notifications.failure_timeout * 1000,
-                ))
-                .show()
-                .ok();
-            exit(1);
+                ));
+            add_notification_hints(&mut notification);
+            notification.show().ok();
         }
     };
     // Send a notification on success for commands that we want to notify on

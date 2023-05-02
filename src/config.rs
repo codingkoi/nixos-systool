@@ -55,9 +55,19 @@ pub struct ExternalCommandsConfig {
 }
 
 impl Default for ExternalCommandsConfig {
+    #[cfg(target_os = "linux")]
     fn default() -> Self {
         Self {
             browser_open: "xdg-open".to_owned(),
+            git: "git".to_owned(),
+            manix: "manix".to_owned(),
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn default() -> Self {
+        Self {
+            browser_open: "open".to_owned(),
             git: "git".to_owned(),
             manix: "manix".to_owned(),
         }
