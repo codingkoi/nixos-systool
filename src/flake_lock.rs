@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use chrono::prelude::*;
 use chrono::Duration;
 use serde::Deserialize;

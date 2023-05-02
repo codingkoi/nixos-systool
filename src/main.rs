@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
 use directories::BaseDirs;

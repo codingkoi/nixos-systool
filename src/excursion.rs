@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::{
     env::{current_dir, set_current_dir},
     error::Error,
