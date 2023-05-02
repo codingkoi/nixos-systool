@@ -205,7 +205,7 @@ impl Commands {
 #[cfg(target_os = "linux")]
 fn add_notification_hints(notification: &mut Notification) {
     use notify_rust::{Hint, Urgency};
-    notification.hint(Hint::Urgency(Urgency::Critical))
+    notification.hint(Hint::Urgency(Urgency::Critical));
 }
 
 // No-op for non Linux hosts
