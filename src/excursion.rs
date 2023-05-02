@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use anyhow::Result;
 use std::{
     env::{current_dir, set_current_dir},
-    error::Error,
     path::{Path, PathBuf},
 };
 
@@ -16,7 +16,7 @@ impl Directory {
     /// Enter the specified directory, keeping track of the previous
     /// directory. Returns a `Directory` object, that when dropped will
     /// change back to the previous directory.
-    pub fn enter<P: AsRef<Path>>(dir: P) -> Result<Self, Box<dyn Error>> {
+    pub fn enter<P: AsRef<Path>>(dir: P) -> Result<Self> {
         let previous_dir = current_dir()?;
         set_current_dir(dir.as_ref())?;
         Ok(Directory { previous_dir })

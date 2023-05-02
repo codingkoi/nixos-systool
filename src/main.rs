@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
 use directories::BaseDirs;
@@ -14,7 +15,6 @@ use nixos_systool::{error, info, warn};
 use notify_rust::{Notification, Timeout};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::process::exit;
 use thiserror::Error as ThisError;
@@ -144,11 +144,7 @@ impl Commands {
     /// Checks for any untracked files in the system flake and reports an
     /// error if there are. Usually this is something that will cause confusion
     /// if it's allowed to slip by.
-    fn check_untracked_files(
-        &self,
-        flake_path: &Utf8PathBuf,
-        cfg: &Config,
-    ) -> Result<(), Box<dyn Error>> {
+    fn check_untracked_files(&self, flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
         if matches!(
             self,
             Commands::Search { .. }
@@ -159,7 +155,8 @@ impl Commands {
             return Ok(());
         }
 
-        let _dir = Directory::enter(flake_path)?;
+        let _dir = Directory::enter(flake_path)
+            .with_context(|| format!("Failed to enter flake path {flake_path}"))?;
 
         let status = match cmd!(&cfg.external_commands.git, "status", "--short")
             .stderr_null()
@@ -191,7 +188,7 @@ impl Commands {
     // Check to see if this command is valid to run on this system.
     // Currently this means whether or not the command can be run on a
     // non-NixOS system, e.g. on a system with just `nix` installed.
-    fn valid_on_system(&self) -> Result<(), Box<dyn Error>> {
+    fn valid_on_system(&self) -> Result<()> {
         match self {
             Commands::Apply { .. } => {
                 let info = os_info::get();
@@ -248,8 +245,6 @@ fn main() {
     let command = config.cli.command;
     let cfg = config.config_file;
     if let Err(e) = run_command(&command, &config.cli.flake_path.into(), &cfg) {
-        error!("Error running command");
-        error!(format!("- {e}"));
         if command.should_notify() {
             let mut notification = Notification::new();
             notification
@@ -264,6 +259,7 @@ fn main() {
                 ));
             add_notification_hints(&mut notification);
             notification.show().ok();
+            error!(format!("{e:#}"));
         }
     };
     // Send a notification on success for commands that we want to notify on
@@ -280,11 +276,7 @@ fn main() {
     };
 }
 
-fn run_command(
-    command: &Commands,
-    flake_path: &Utf8PathBuf,
-    cfg: &Config,
-) -> Result<(), Box<dyn Error>> {
+fn run_command(command: &Commands, flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
     // Check for untracked files if we need to
     command.check_untracked_files(flake_path, cfg)?;
     // Check if this command can be run on this system

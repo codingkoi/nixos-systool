@@ -13,6 +13,7 @@ codegen-units = 1
 strip = "symbols"
 
 [dependencies]
+anyhow = "1.0.71"
 camino = { version = "1.1.1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help", "cargo"] }
