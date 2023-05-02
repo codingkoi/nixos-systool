@@ -43,19 +43,24 @@
         darwinLinkerFlags = strings.concatMapStringsSep " " (lib:
           let libName = strings.removePrefix "apple-framework-" lib.pname;
           in "-F${lib}/Library/Frameworks -framework ${libName}") darwinInputs;
+
+        nativeBuildInputs = nativeInputs
+          ++ lists.optional isDarwin darwinInputs;
       in rec {
         # `nix build`
         packages.default = naersk-lib.buildPackage {
           pname = "nixos-systool";
           root = ./.;
+
+          inherit nativeBuildInputs;
+          NIX_LDFLAGS = strings.optionalString isDarwin darwinLinkerFlags;
         };
         # `nix run`
         apps.default = utils.lib.mkApp { drv = packages.default; };
         # `nix develop`
         devShells.default = with pkgs;
           mkShell {
-            nativeBuildInputs = nativeInputs
-              ++ lists.optional isDarwin darwinInputs;
+            inherit nativeBuildInputs;
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
             NIX_LDFLAGS = strings.optionalString isDarwin darwinLinkerFlags;
           };
