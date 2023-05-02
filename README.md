@@ -32,4 +32,4 @@ Options:
           Print version information
 ```
 
-The `flake.nix` doesn't currently work on MacOS because I need to sort out why `cargo/rustc` can't find the Cocoa headers.
+## TODO - document this more
