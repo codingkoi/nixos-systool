@@ -1,0 +1,21 @@
+[advisories]
+ignore = [
+  # For `enumflags2` used by `notify-rust`
+  "RUSTSEC-2023-0035",
+  # For `remove_dir_all` used by `notify-rust`
+  "RUSTSEC-2023-0018"
+]
+yanked = "allow"
+
+[bans]
+multiple-versions = "allow"
+
+[licenses]
+copyleft = "allow"
+allow-osi-fsf-free = "both"
+# incompatible with v3 without an "or later" exception
+deny = [ "GPL-2.0" ]
+
+[[licenses.exceptions]]
+name = "unicode-ident"
+allow = ["Unicode-DFS-2016"]

@@ -50,8 +50,15 @@
         # `nix develop`
         devShells.default = with pkgs;
           mkShell {
-            nativeBuildInputs = nativeBuildInputs
-              ++ [ rustc cargo cargo-outdated clippy rustfmt rust-analyzer ];
+            nativeBuildInputs = nativeBuildInputs ++ [
+              rustc
+              cargo
+              cargo-deny
+              cargo-outdated
+              clippy
+              rustfmt
+              rust-analyzer
+            ];
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
             NIX_LDFLAGS = strings.optionalString isDarwin darwinLinkerFlags;
           };
