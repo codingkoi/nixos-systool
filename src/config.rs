@@ -33,12 +33,15 @@ impl Default for NotificationsConfig {
 pub struct SystemCheckConfig {
     /// How many days until the nixpkgs version is considered out of date.
     pub allowed_age: u32,
+    /// Path to the flake that defines the current system
+    pub current_system_flake_path: String,
 }
 
 impl Default for SystemCheckConfig {
     fn default() -> Self {
         Self {
             allowed_age: 14, // days
+            current_system_flake_path: "/etc/current-system-flake".to_owned(),
         }
     }
 }

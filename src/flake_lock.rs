@@ -41,6 +41,15 @@ pub enum FlakeStatus {
     },
 }
 
+impl FlakeStatus {
+    pub fn last_update(&self) -> &NaiveDate {
+        match self {
+            FlakeStatus::UpToDate { last_update, .. }
+            | FlakeStatus::Outdated { last_update, .. } => last_update,
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum FlakeLoadError {
     #[error("Couldn't read lock file: {0}")]

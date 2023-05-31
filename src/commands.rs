@@ -149,51 +149,80 @@ pub fn update_flake(flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
 }
 
 pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
-    // If we have a link to the current system flake in /etc/current-system-flake
+    // If we have a link to the current system flake in the nix store
     // then use it for the check, otherwise, fallback to the less accurate
     // check of the flake repo path.
-    let current_system_flake = Utf8Path::new("/etc/current-system-flake");
-    let mut flake_lock_filename = match current_system_flake.exists() {
-        true => current_system_flake.into(),
-        false => {
-            if !no_warning {
-                warn!(format!(
-                    "The flake in the the repository may not be applied to the system. \
-                     Make sure to use `{CRATE_NAME} apply` or create a symlink in \
-                     /etc/current-system-flake pointing to the source of the flake in \
-                     the Nix store used to build the current system for a more accurate \
-                     version check."
-                ));
-
-                warn!("\nAdd the following to your nixosSystem configuration to do so:");
-                warn!("    environment.etc.\"current-system-flake\".source = inputs.self;");
-            };
-            flake_path.clone()
-        }
+    let current_flake_path = Utf8Path::new(&cfg.system_check.current_system_flake_path);
+    let current_flake_status = if current_flake_path.exists() {
+        let mut path: Utf8PathBuf = current_flake_path.into();
+        path.push("flake");
+        path.set_extension("lock");
+        Some(FlakeLock::load(&path)?.check(cfg.system_check.allowed_age)?)
+    } else {
+        None
     };
-    // Add the path parts for the "flake.lock" file.
-    flake_lock_filename.push("flake");
-    flake_lock_filename.set_extension("lock");
 
-    let check_result =
-        FlakeLock::load(&flake_lock_filename)?.check(cfg.system_check.allowed_age)?;
-    match check_result {
-        FlakeStatus::UpToDate { last_update, since } => {
-            let days_ago = since.num_days();
-            info!(format!(
-                "System flake ({flake_lock_filename}) is up to date."
-            ));
-            info!(format!(
-                "Last updated on {last_update} ({days_ago} days ago)"
-            ));
-        }
-        FlakeStatus::Outdated { last_update, since } => {
-            let days_ago = since.num_days();
-            error!(format!(
-                        "System flake ({flake_lock_filename}) is out of date, last update was on {last_update} ({days_ago} days ago)"
+    // Get the status of the config flake
+    let mut path = flake_path.clone();
+    path.push("flake");
+    path.set_extension("lock");
+    let config_flake_status = FlakeLock::load(&path)?.check(cfg.system_check.allowed_age)?;
+
+    if let Some(current_status) = current_flake_status {
+        match current_status {
+            FlakeStatus::UpToDate { last_update, since } => {
+                let days_ago = since.num_days();
+                info!(format!("System flake is up to date. Last updated on {last_update} ({days_ago} days ago)"));
+                if config_flake_status.last_update() > &last_update {
+                    warn!(format!("Config flake is AHEAD of the current system flake, last updated on {last_update}. \
+                                   Consider running `{CRATE_NAME} apply`."))
+                }
+            }
+            FlakeStatus::Outdated { last_update, since } => {
+                let days_ago = since.num_days();
+                error!(format!(
+                        "System flake is out of date, last update was on {last_update} ({days_ago} days ago)"
                     ));
-            error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
+                match config_flake_status {
+                    FlakeStatus::UpToDate { last_update, since } => {
+                        let days_ago = since.num_days();
+                        warn!(format!(
+                            "Config flake is up to date, last updated on {last_update} ({days_ago} days ago) \
+                             Update the system flake to use this one using `{CRATE_NAME} apply`."
+                        ));
+                    }
+                    FlakeStatus::Outdated { .. } => {
+                        error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
+                    }
+                }
+            }
         }
-    };
+    } else {
+        // We don't have a link to the current system flake, so do the best we can without it
+        if !no_warning {
+            warn!(format!(
+                "The flake in the the repository may not be applied to the system. \
+                 Make sure to use `{CRATE_NAME} apply` or create a symlink in \
+                 /etc/current-system-flake pointing to the source of the flake in \
+                 the Nix store used to build the current system for a more accurate \
+                 version check."
+            ));
+
+            warn!("\nAdd the following to your nixosSystem configuration to do so:");
+            warn!("    environment.etc.\"current-system-flake\".source = inputs.self;");
+        };
+        match config_flake_status {
+            FlakeStatus::UpToDate { last_update, since } => {
+                let days_ago = since.num_days();
+                warn!(format!(
+                            "Config flake is up to date, last updated on {last_update} ({days_ago} days ago) \
+                             Update the system flake to use this one using `{CRATE_NAME} apply`."
+                        ));
+            }
+            FlakeStatus::Outdated { .. } => {
+                error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
+            }
+        }
+    }
     Ok(())
 }
