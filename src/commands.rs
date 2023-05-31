@@ -149,6 +149,8 @@ pub fn update_flake(flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
 }
 
 pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
+    let wrap_options = textwrap::Options::with_termwidth();
+
     // If we have a link to the current system flake in the nix store
     // then use it for the check, otherwise, fallback to the less accurate
     // check of the flake repo path.
@@ -172,27 +174,41 @@ pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Con
         match current_status {
             FlakeStatus::UpToDate { last_update, since } => {
                 let days_ago = since.num_days();
-                info!(format!("System flake is up to date. Last updated on {last_update} ({days_ago} days ago)"));
+                let last_update_str = last_update.format(&cfg.system_check.date_format);
+                let msg = format!("System flake is up to date. Last updated on {last_update_str} ({days_ago} days ago)");
+                info!(textwrap::fill(&msg, &wrap_options));
                 if config_flake_status.last_update() > &last_update {
-                    warn!(format!("Config flake is AHEAD of the current system flake, last updated on {last_update}. \
-                                   Consider running `{CRATE_NAME} apply`."))
+                    let last_update_str = last_update.format(&cfg.system_check.date_format);
+                    let msg = format!(
+                        "Config flake is AHEAD of the current system flake, last updated on {last_update_str}. \
+                         Consider running `{CRATE_NAME} apply`."
+                    );
+                    warn!(textwrap::fill(&msg, &wrap_options));
                 }
             }
             FlakeStatus::Outdated { last_update, since } => {
                 let days_ago = since.num_days();
-                error!(format!(
-                        "System flake is out of date, last update was on {last_update} ({days_ago} days ago)"
-                    ));
+                let last_update_str = last_update.format(&cfg.system_check.date_format);
+                let msg = format!(
+                        "System flake is out of date, last update was on {last_update_str} ({days_ago} days ago)"
+                    );
+                error!(textwrap::fill(&msg, &wrap_options));
                 match config_flake_status {
                     FlakeStatus::UpToDate { last_update, since } => {
                         let days_ago = since.num_days();
-                        warn!(format!(
-                            "Config flake is up to date, last updated on {last_update} ({days_ago} days ago) \
+                        let last_update_str = last_update.format(&cfg.system_check.date_format);
+                        let msg = format!(
+                            "Config flake is up to date, last updated on {last_update_str} ({days_ago} days ago). \
                              Update the system flake to use this one using `{CRATE_NAME} apply`."
-                        ));
+                        );
+                        warn!(textwrap::fill(&msg, &wrap_options));
                     }
                     FlakeStatus::Outdated { .. } => {
-                        error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
+                        let msg = format!(
+                            "Please update as soon as possible using `{CRATE_NAME} update` \
+                             and `{CRATE_NAME} apply`."
+                        );
+                        error!(textwrap::fill(&msg, &wrap_options));
                     }
                 }
             }
@@ -200,13 +216,14 @@ pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Con
     } else {
         // We don't have a link to the current system flake, so do the best we can without it
         if !no_warning {
-            warn!(format!(
+            let msg = format!(
                 "The flake in the the repository may not be applied to the system. \
                  Make sure to use `{CRATE_NAME} apply` or create a symlink in \
                  /etc/current-system-flake pointing to the source of the flake in \
                  the Nix store used to build the current system for a more accurate \
                  version check."
-            ));
+            );
+            warn!(textwrap::fill(&msg, &wrap_options));
 
             warn!("\nAdd the following to your nixosSystem configuration to do so:");
             warn!("    environment.etc.\"current-system-flake\".source = inputs.self;");
@@ -214,13 +231,19 @@ pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Con
         match config_flake_status {
             FlakeStatus::UpToDate { last_update, since } => {
                 let days_ago = since.num_days();
-                warn!(format!(
-                            "Config flake is up to date, last updated on {last_update} ({days_ago} days ago) \
-                             Update the system flake to use this one using `{CRATE_NAME} apply`."
-                        ));
+                let last_update_str = last_update.format(&cfg.system_check.date_format);
+                let msg = format!(
+                    "Config flake is up to date, last updated on {last_update_str} ({days_ago} days ago). \
+                     Update the system flake to use this one using `{CRATE_NAME} apply`."
+                );
+                warn!(textwrap::fill(&msg, &wrap_options));
             }
             FlakeStatus::Outdated { .. } => {
-                error!(format!("Please update as soon as possible using `{CRATE_NAME} update` and `{CRATE_NAME} apply`."));
+                let msg = format!(
+                    "Please update as soon as possible using `{CRATE_NAME} update` \
+                     and `{CRATE_NAME} apply`."
+                );
+                error!(textwrap::fill(&msg, &wrap_options));
             }
         }
     }

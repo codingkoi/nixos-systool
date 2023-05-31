@@ -35,6 +35,8 @@ pub struct SystemCheckConfig {
     pub allowed_age: u32,
     /// Path to the flake that defines the current system
     pub current_system_flake_path: String,
+    /// Date format string
+    pub date_format: String,
 }
 
 impl Default for SystemCheckConfig {
@@ -42,6 +44,7 @@ impl Default for SystemCheckConfig {
         Self {
             allowed_age: 14, // days
             current_system_flake_path: "/etc/current-system-flake".to_owned(),
+            date_format: "%-e %B, %Y".to_owned(),
         }
     }
 }
