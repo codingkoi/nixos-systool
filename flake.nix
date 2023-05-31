@@ -74,6 +74,7 @@
               This code is licensed under ${cargoToml.package.license} using Rust ${cargoToml.package.edition} edition.
             '';
             packages = nativeBuildInputs ++ (with pkgs; [
+              clang
               rustc
               cargo
               cargo-deny
