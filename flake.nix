@@ -59,12 +59,12 @@
           apps.default.program = "${package}/bin/${pname}";
           # `nix develop`
           devshells.default = let
-            ansiClear = "[H[2J";
-            # Ansi 256 color code
+            # Ansi 256 color code for rust orange
             rustColor = "{166}";
           in {
             motd = ''
-              ${ansiClear}${rustColor}{bold}🦀 Rust project - ${cargoToml.package.name} v${cargoToml.package.version}{reset}
+
+              ${rustColor}{bold}🦀 Rust project - ${cargoToml.package.name} v${cargoToml.package.version}{reset}
               This is the devshell for developing on this project. Use whatever editor
               you're comfortable with to edit the code. The {166}{italic}rust-analyzer{reset} is
               available for use.
