@@ -21,8 +21,6 @@ pub const CRATE_NAME: &str = clap::crate_name!();
 pub fn run_command(command: &Commands, flake_path: &Utf8PathBuf, cfg: &Config) -> Result<()> {
     // Check for untracked files if we need to
     command.check_untracked_files(flake_path, cfg)?;
-    // Check if this command can be run on this system
-    command.valid_on_system()?;
 
     match command {
         Commands::Apply { method } => commands::apply(method, flake_path),

@@ -169,20 +169,4 @@ impl Commands {
             Err(SystoolError::UntrackedFiles(untracked.join("\n")).into())
         }
     }
-
-    // Check to see if this command is valid to run on this system.
-    // Currently this means whether or not the command can be run on a
-    // non-NixOS system, e.g. on a system with just `nix` installed.
-    pub fn valid_on_system(&self) -> anyhow::Result<()> {
-        match self {
-            Commands::Apply { .. } => {
-                let info = os_info::get();
-                match info.os_type() {
-                    os_info::Type::NixOS => Ok(()),
-                    _ => Err(SystoolError::NonNixOsSystem(self.clone(), info.os_type()).into()),
-                }
-            }
-            _ => Ok(()),
-        }
-    }
 }

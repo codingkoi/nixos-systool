@@ -20,20 +20,37 @@ pub fn apply(method: &Option<String>, flake_path: &Utf8PathBuf) -> Result<()> {
         None => "switch".to_string(),
         Some(method) => method.to_string(),
     };
-    info!("Applying system configuration");
-    cmd!(
-        "nixos-rebuild",
-        // Use `--use-remote-sudo` flag because Git won't recognize the
-        // system flake repository when run using `sudo` due to a CVE fix.
-        "--use-remote-sudo",
-        // Don't assume that /etc/nixos/flake.nix exists, just specify the
-        // flake path directly.
-        "--flake",
-        flake_path,
-        method
-    )
-    .run()?;
-    Ok(())
+
+    // Check to see if this command is valid to run on this system.
+    // Currently this means whether or not the command can be run on a
+    // non-NixOS system, e.g. on a system with just `nix` installed.
+    let info = os_info::get();
+    match info.os_type() {
+        // For NixOS systems use `nixos-rebuild`
+        os_info::Type::NixOS => {
+            info!("Applying system configuration");
+            cmd!(
+                "nixos-rebuild",
+                // Use `--use-remote-sudo` flag because Git won't recognize the
+                // system flake repository when run using `sudo` due to a CVE fix.
+                "--use-remote-sudo",
+                // Don't assume that /etc/nixos/flake.nix exists, just specify the
+                // flake path directly.
+                "--flake",
+                flake_path,
+                method
+            )
+            .run()?;
+            Ok(())
+        }
+        // For MacOS systems try to use `darwin-rebuild`
+        os_info::Type::Macos => {
+            info!("Applying system configuration");
+            cmd!("darwin-rebuild", "--flake", flake_path, method).run()?;
+            Ok(())
+        }
+        _ => Err(SystoolError::NonNixOsSystem("apply".to_string(), info.os_type()).into()),
+    }
 }
 
 pub fn apply_user(target_user: &Option<String>, flake_path: &Utf8PathBuf) -> Result<()> {
