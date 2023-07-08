@@ -178,7 +178,9 @@ pub fn check_flake_version(no_warning: bool, flake_path: &Utf8PathBuf, cfg: &Con
                 let msg = format!("System flake is up to date. Last updated on {last_update_str} ({days_ago} days ago)");
                 info!(textwrap::fill(&msg, &wrap_options));
                 if config_flake_status.last_update() > &last_update {
-                    let last_update_str = last_update.format(&cfg.system_check.date_format);
+                    let last_update_str = config_flake_status
+                        .last_update()
+                        .format(&cfg.system_check.date_format);
                     let msg = format!(
                         "Config flake is AHEAD of the current system flake, last updated on {last_update_str}. \
                          Consider running `{CRATE_NAME} apply`."
