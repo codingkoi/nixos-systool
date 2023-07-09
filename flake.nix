@@ -19,6 +19,8 @@
       perSystem = { pkgs, system, ... }:
         let
           inherit (nixpkgs) lib;
+          inherit (builtins) concatStringsSep map pathExists;
+          inherit (lib) readFile makeLibraryPath;
           inherit (lib.strings)
             concatMapStringsSep hasSuffix optionalString removePrefix;
           inherit (lib.lists) optional;
@@ -52,6 +54,13 @@
             inherit nativeBuildInputs;
             NIX_LDFLAGS = optionalString isDarwin darwinLinkerFlags;
           };
+
+          # Rust toolchain version
+          toolchainToml = if (pathExists ./rust-toolchain.toml) then
+            pkgs.lib.importTOML ./rust-toolchain.toml
+          else {
+            toolchain = { channel = "stable"; };
+          };
         in {
           # `nix build`
           packages.default = package;
@@ -66,7 +75,7 @@
 
               ${rustColor}{bold}🦀 Rust project - ${cargoToml.package.name} v${cargoToml.package.version}{reset}
               This is the devshell for developing on this project. Use whatever editor
-              you're comfortable with to edit the code. The {166}{italic}rust-analyzer{reset} is
+              you're comfortable with to edit the code. The ${rustColor}{italic}rust-analyzer{reset} is
               available for use.
 
               Edit ${rustColor}{italic}flake.nix{reset} to change this greeting message.
@@ -75,19 +84,49 @@
             '';
             packages = nativeBuildInputs ++ (with pkgs; [
               clang
-              rustc
-              cargo
+              rustup
               cargo-deny
               cargo-outdated
               cargo-readme
-              clippy
-              rustfmt
-              rust-analyzer
             ]);
             env = [
               {
+                name = "RUSTC_VERSION";
+                value = toolchainToml.toolchain.channel;
+              }
+              {
+                name = "RUSTFLAGS";
+                value = concatStringsSep " " (map (a: "-L ${a}/lib") [ ]);
+              }
+              # Add glibc, clang, glib and other headers to bindgen search path
+              {
+                name = "BINDGEN_EXTRA_CLANG_ARGS";
+                # Includes with normal include path
+                value = concatStringsSep " " ((map (a: ''-I"${a}/include"'') [
+                  # add dev libraries here (e.g. pkgs.libvmi.dev)
+                  pkgs.glibc.dev
+                ])
+                # Includes with special directory paths
+                  ++ [
+                    ''
+                      -I"${pkgs.llvmPackages_latest.libclang.lib}/lib/clang/${pkgs.llvmPackages_latest.libclang.version}/include"''
+                    ''-I"${pkgs.glib.dev}/include/glib-2.0"''
+                    "-I${pkgs.glib.out}/lib/glib-2.0/include/"
+                  ]);
+              }
+              {
+                name = "LIBCLANG_PATH";
+                value =
+                  makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
+              }
+              {
                 name = "RUST_SRC_PATH";
                 value = pkgs.rustPlatform.rustLibSrc;
+              }
+              {
+                name = "PATH";
+                eval =
+                  "$PATH:\${CARGO_HOME:~/.cargo}/bin:\${RUSTUP_HOME}:~/.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/";
               }
               {
                 name = "NIX_LDFLAGS";
