@@ -8,6 +8,7 @@ pub struct Config {
     pub notifications: NotificationsConfig,
     pub system_check: SystemCheckConfig,
     pub external_commands: ExternalCommandsConfig,
+    pub web_search: WebSearchConfig,
 }
 
 /// Configuration for notifications for long running commands
@@ -76,6 +77,27 @@ impl Default for ExternalCommandsConfig {
             browser_open: "open".to_owned(),
             git: "git".to_owned(),
             manix: "manix".to_owned(),
+        }
+    }
+}
+
+/// Configuration for web searches
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebSearchConfig {
+    pub nixos_pkg_search: String,
+    pub nixos_option_search: String,
+    pub home_manager_search: String,
+}
+
+impl Default for WebSearchConfig {
+    fn default() -> Self {
+        Self {
+            nixos_pkg_search: "https://search.nixos.org/packages?channel=unstable&query={}"
+                .to_owned(),
+            nixos_option_search: "https://search.nixos.org/options?channel=unstable&query={}"
+                .to_owned(),
+            home_manager_search: "https://mipmip.github.io/home-manager-option-search/?query={}"
+                .to_owned(),
         }
     }
 }

@@ -115,21 +115,15 @@ pub fn search(
     }
     // If we're doing a home-manager search, then use the browser
     if home_manager {
+        let url = cfg.web_search.home_manager_search.replace("{}", query);
         info!(format!("Searching home-manager for `{query}`"));
-        cmd!(
-            &cfg.external_commands.browser_open,
-            format!("https://mipmip.github.io/home-manager-option-search/?{query}")
-        )
-        .run()?;
+        cmd!(&cfg.external_commands.browser_open, url).run()?;
     } else if options {
         // If we're searching for options, use `manix` or a browser
         info!(format!("Searching options for '{query}'"));
         if browser {
-            cmd!(
-                &cfg.external_commands.browser_open,
-                format!("https://search.nixos.org/options?channel=unstable&query={query}")
-            )
-            .run()?;
+            let url = cfg.web_search.nixos_option_search.replace("{}", query);
+            cmd!(&cfg.external_commands.browser_open, url).run()?;
         } else {
             cmd!(&cfg.external_commands.manix, query).run()?;
         }
@@ -137,11 +131,8 @@ pub fn search(
         // Otherwise search for packages in Nixpkgs
         info!(format!("Searching nixpkgs for '{query}'"));
         if browser {
-            cmd!(
-                &cfg.external_commands.browser_open,
-                format!("https://search.nixos.org/packages?channel=unstable&query={query}")
-            )
-            .run()?;
+            let url = cfg.web_search.nixos_pkg_search.replace("{}", query);
+            cmd!(&cfg.external_commands.browser_open, url).run()?;
         } else {
             cmd!("nix", "search", "nixpkgs", query).run()?;
         }
