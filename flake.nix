@@ -29,19 +29,8 @@
 
           # MacOS specific stuff
           isDarwin = hasSuffix "-darwin" system;
-          frameworks = pkgs.darwin.apple_sdk.frameworks;
           # Apple frameworks needed by the Notifications part of the tool
-          darwinInputs = with frameworks; [
-            Cocoa
-            Foundation
-            AppKit
-            CoreServices
-          ];
-          # Generate Linker flags for Apple Frameworks from the list of Framework packages
-          darwinLinkerFlags = concatMapStringsSep " " (lib:
-            let libName = removePrefix "apple-framework-" lib.pname;
-            in "-F${lib}/Library/Frameworks -framework ${libName}")
-            darwinInputs;
+          darwinInputs = [ pkgs.apple-sdk_12 ];
           nativeBuildInputs = optional isDarwin darwinInputs;
 
           # package definition
@@ -52,7 +41,6 @@
             root = ./.;
 
             inherit nativeBuildInputs;
-            NIX_LDFLAGS = optionalString isDarwin darwinLinkerFlags;
           };
 
           # Rust toolchain version
@@ -82,13 +70,13 @@
 
               This code is licensed under ${cargoToml.package.license} using Rust ${cargoToml.package.edition} edition.
             '';
-            packages = nativeBuildInputs ++ (with pkgs; [
+            packages = with pkgs; [
               clang
               rustup
               cargo-deny
               cargo-outdated
               cargo-readme
-            ]);
+            ];
             env = [
               {
                 name = "RUSTC_VERSION";
@@ -102,17 +90,14 @@
               {
                 name = "BINDGEN_EXTRA_CLANG_ARGS";
                 # Includes with normal include path
-                value = concatStringsSep " " ((map (a: ''-I"${a}/include"'') [
-                  # add dev libraries here (e.g. pkgs.libvmi.dev)
-                  pkgs.glibc.dev
-                ])
-                # Includes with special directory paths
-                  ++ [
+                value = concatStringsSep " "
+                  # Includes with special directory paths
+                  [
                     ''
                       -I"${pkgs.llvmPackages_latest.libclang.lib}/lib/clang/${pkgs.llvmPackages_latest.libclang.version}/include"''
                     ''-I"${pkgs.glib.dev}/include/glib-2.0"''
                     "-I${pkgs.glib.out}/lib/glib-2.0/include/"
-                  ]);
+                  ];
               }
               {
                 name = "LIBCLANG_PATH";
@@ -127,10 +112,6 @@
                 name = "PATH";
                 eval =
                   "$PATH:\${CARGO_HOME:~/.cargo}/bin:\${RUSTUP_HOME}:~/.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/";
-              }
-              {
-                name = "NIX_LDFLAGS";
-                value = optionalString isDarwin darwinLinkerFlags;
               }
             ];
           };
