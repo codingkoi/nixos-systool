@@ -1,8 +1,10 @@
 # NixOS system management tool
 
+[![No Maintenance Intended](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
+
 This is a helper tool I wrote to manage my NixOS systems. It has a decent set of features and works for me, but it might not work for you.
 
-I mostly wrote it so I wouldn't have to remember the lower level Nix commands (and if I forgot, the commands are in the source code). 
+I mostly wrote it so I wouldn't have to remember the lower level Nix commands (and if I forgot, the commands are in the source code).
 
 ```
 NixOS system management tool
