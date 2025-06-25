@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "nixos-systool"
-version = "1.7.0"
+version = "1.7.2"
 dependencies = [
  "anyhow",
  "camino",

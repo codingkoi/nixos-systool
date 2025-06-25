@@ -46,7 +46,7 @@ pub fn apply(method: &Option<String>, flake_path: &Utf8PathBuf) -> Result<()> {
         // For MacOS systems try to use `darwin-rebuild`
         os_info::Type::Macos => {
             info!("Applying system configuration");
-            cmd!("darwin-rebuild", "--flake", flake_path, method).run()?;
+            cmd!("sudo", "darwin-rebuild", "--flake", flake_path, method).run()?;
             Ok(())
         }
         _ => Err(SystoolError::NonNixOsSystem("apply".to_string(), info.os_type()).into()),
