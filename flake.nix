@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "nixpkgs/nixos-25.11";
     naersk = {
       url = "github:nmattia/naersk/master";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -30,7 +30,7 @@
           # MacOS specific stuff
           isDarwin = hasSuffix "-darwin" system;
           # Apple frameworks needed by the Notifications part of the tool
-          darwinInputs = [ pkgs.apple-sdk_12 ];
+          darwinInputs = [ pkgs.apple-sdk ];
           nativeBuildInputs = optional isDarwin darwinInputs;
 
           # package definition
