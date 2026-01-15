@@ -74,8 +74,8 @@ fn main() {
                 ));
             add_notification_hints(&mut notification);
             notification.show().ok();
-            error!(format!("{e:#}"));
         }
+        error!(format!("{e:#}"));
     };
     // Send a notification on success for commands that we want to notify on
     if command.should_notify() {

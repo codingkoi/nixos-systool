@@ -1,10 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-25.11";
-    naersk = {
-      url = "github:nmattia/naersk/master";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     flake-parts.url = "github:hercules-ci/flake-parts";
     rust-overlay.url = "github:oxalica/rust-overlay";
     devshell = {
